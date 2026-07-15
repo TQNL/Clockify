@@ -10,7 +10,9 @@ import android.text.TextUtils
 import org.fossify.clock.extensions.cancelAlarmClock
 import org.fossify.clock.extensions.createNewAlarm
 import org.fossify.clock.models.Alarm
+import org.fossify.clock.models.AlarmFolder
 import org.fossify.commons.extensions.getIntValue
+import org.fossify.commons.extensions.notificationManager
 import org.fossify.commons.extensions.getStringValue
 import org.fossify.commons.helpers.FRIDAY_BIT
 import org.fossify.commons.helpers.MONDAY_BIT
@@ -25,6 +27,7 @@ class DBHelper private constructor(
 ) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
 
     private val ALARMS_TABLE_NAME = "contacts"  // wrong table name, ignore it
+    private val FOLDERS_TABLE_NAME = "folders"
     private val COL_ID = "id"
     private val COL_TIME_IN_MINUTES = "time_in_minutes"
     private val COL_DAYS = "days"
@@ -34,11 +37,14 @@ class DBHelper private constructor(
     private val COL_SOUND_URI = "sound_uri"
     private val COL_LABEL = "label"
     private val COL_ONE_SHOT = "one_shot"
+    private val COL_FOLDER_ID = "folder_id"
+    private val COL_NAME = "name"
+    private val COL_CREATED_AT = "created_at"
 
     private val mDb = writableDatabase
 
     companion object {
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
         const val DB_NAME = "alarms.db"
 
         @SuppressLint("StaticFieldLeak")
@@ -56,14 +62,24 @@ class DBHelper private constructor(
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             "CREATE TABLE IF NOT EXISTS $ALARMS_TABLE_NAME ($COL_ID INTEGER PRIMARY KEY AUTOINCREMENT, $COL_TIME_IN_MINUTES INTEGER, $COL_DAYS INTEGER, " +
-                "$COL_IS_ENABLED INTEGER, $COL_VIBRATE INTEGER, $COL_SOUND_TITLE TEXT, $COL_SOUND_URI TEXT, $COL_LABEL TEXT, $COL_ONE_SHOT INTEGER)"
+                "$COL_IS_ENABLED INTEGER, $COL_VIBRATE INTEGER, $COL_SOUND_TITLE TEXT, $COL_SOUND_URI TEXT, $COL_LABEL TEXT, $COL_ONE_SHOT INTEGER, " +
+                "$COL_FOLDER_ID INTEGER)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS $FOLDERS_TABLE_NAME ($COL_ID INTEGER PRIMARY KEY AUTOINCREMENT, $COL_NAME TEXT NOT NULL, $COL_CREATED_AT INTEGER NOT NULL)"
         )
         insertInitialAlarms(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion == 1 && newVersion > oldVersion) {
+        if (oldVersion < 2) {
             db.execSQL("ALTER TABLE $ALARMS_TABLE_NAME ADD COLUMN $COL_ONE_SHOT INTEGER NOT NULL DEFAULT 0")
+        }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE $ALARMS_TABLE_NAME ADD COLUMN $COL_FOLDER_ID INTEGER")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS $FOLDERS_TABLE_NAME ($COL_ID INTEGER PRIMARY KEY AUTOINCREMENT, $COL_NAME TEXT NOT NULL, $COL_CREATED_AT INTEGER NOT NULL)"
+            )
         }
     }
 
@@ -102,6 +118,13 @@ class DBHelper private constructor(
             context.cancelAlarmClock(it)
         }
 
+        // Cancel the per-alarm upcoming-alarm notifications that were
+        // posted by UpcomingAlarmReceiver. Without this, notifications
+        // linger after the alarm is deleted.
+        alarms.forEach { alarm ->
+            context.notificationManager.cancel(UPCOMING_ALARM_NOTIFICATION_BASE + alarm.id)
+        }
+
         val args = TextUtils.join(", ", alarms.map { it.id.toString() })
         val selection = "$ALARMS_TABLE_NAME.$COL_ID IN ($args)"
         mDb.delete(ALARMS_TABLE_NAME, selection, null)
@@ -121,6 +144,7 @@ class DBHelper private constructor(
             put(COL_SOUND_URI, alarm.soundUri)
             put(COL_LABEL, alarm.label)
             put(COL_ONE_SHOT, alarm.oneShot)
+            put(COL_FOLDER_ID, alarm.folderId)
         }
     }
 
@@ -137,7 +161,8 @@ class DBHelper private constructor(
             COL_SOUND_TITLE,
             COL_SOUND_URI,
             COL_LABEL,
-            COL_ONE_SHOT
+            COL_ONE_SHOT,
+            COL_FOLDER_ID
         )
         var cursor: Cursor? = null
         try {
@@ -154,6 +179,8 @@ class DBHelper private constructor(
                         val soundUri = cursor.getStringValue(COL_SOUND_URI)
                         val label = cursor.getStringValue(COL_LABEL)
                         val oneShot = cursor.getIntValue(COL_ONE_SHOT) == 1
+                        val folderIdColIdx = cursor.getColumnIndex(COL_FOLDER_ID)
+                        val folderId = if (cursor.isNull(folderIdColIdx)) null else cursor.getInt(folderIdColIdx)
 
                         val alarm = Alarm(
                             id = id,
@@ -164,7 +191,8 @@ class DBHelper private constructor(
                             soundTitle = soundTitle,
                             soundUri = soundUri,
                             label = label,
-                            oneShot = oneShot
+                            oneShot = oneShot,
+                            folderId = folderId
                         )
                         alarms.add(alarm)
                     } catch (e: Exception) {
@@ -177,5 +205,68 @@ class DBHelper private constructor(
         }
 
         return alarms
+    }
+
+    // --- Folder operations ---
+
+    fun getFolders(): List<AlarmFolder> {
+        val folders = mutableListOf<AlarmFolder>()
+        val cols = arrayOf(COL_ID, COL_NAME, COL_CREATED_AT)
+        var cursor: Cursor? = null
+        try {
+            cursor = mDb.query(FOLDERS_TABLE_NAME, cols, null, null, null, null, "$COL_CREATED_AT ASC")
+            if (cursor?.moveToFirst() == true) {
+                do {
+                    val id = cursor.getIntValue(COL_ID)
+                    val name = cursor.getStringValue(COL_NAME)
+                    val createdAtIdx = cursor.getColumnIndex(COL_CREATED_AT)
+                    val createdAt = if (cursor.isNull(createdAtIdx)) System.currentTimeMillis() else cursor.getLong(createdAtIdx)
+                    folders.add(AlarmFolder(id = id, name = name, createdAt = createdAt))
+                } while (cursor.moveToNext())
+            }
+        } finally {
+            cursor?.close()
+        }
+        return folders
+    }
+
+    fun insertFolder(name: String): Int {
+        val values = ContentValues().apply {
+            put(COL_NAME, name)
+            put(COL_CREATED_AT, System.currentTimeMillis())
+        }
+        return mDb.insert(FOLDERS_TABLE_NAME, null, values).toInt()
+    }
+
+    fun updateFolderName(folderId: Int, name: String): Boolean {
+        val values = ContentValues().apply {
+            put(COL_NAME, name)
+        }
+        return mDb.update(FOLDERS_TABLE_NAME, values, "$COL_ID = ?", arrayOf(folderId.toString())) == 1
+    }
+
+    fun deleteFolder(folderId: Int) {
+        // Move all alarms in this folder back to uncategorized
+        val values = ContentValues().apply {
+            putNull(COL_FOLDER_ID)
+        }
+        mDb.update(ALARMS_TABLE_NAME, values, "$COL_FOLDER_ID = ?", arrayOf(folderId.toString()))
+        mDb.delete(FOLDERS_TABLE_NAME, "$COL_ID = ?", arrayOf(folderId.toString()))
+    }
+
+    fun getUncategorizedAlarms(): List<Alarm> = getAlarms().filter { it.folderId == null }
+
+    fun getAlarmsInFolder(folderId: Int): List<Alarm> = getAlarms().filter { it.folderId == folderId }
+
+    fun moveAlarmToFolder(alarmId: Int, folderId: Int?) {
+        val values = ContentValues().apply {
+            if (folderId != null) put(COL_FOLDER_ID, folderId)
+            else putNull(COL_FOLDER_ID)
+        }
+        mDb.update(ALARMS_TABLE_NAME, values, "$COL_ID = ?", arrayOf(alarmId.toString()))
+    }
+
+    fun moveAlarmsToFolder(alarmIds: List<Int>, folderId: Int?) {
+        alarmIds.forEach { moveAlarmToFolder(it, folderId) }
     }
 }

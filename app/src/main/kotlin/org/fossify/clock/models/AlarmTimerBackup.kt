@@ -7,4 +7,5 @@ import androidx.annotation.Keep
 data class AlarmTimerBackup(
     val alarms: List<Alarm>,
     val timers: List<Timer>,
+    val folders: List<AlarmFolder> = emptyList(),
 )

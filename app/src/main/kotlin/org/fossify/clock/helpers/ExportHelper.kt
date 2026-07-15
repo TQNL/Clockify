@@ -22,7 +22,7 @@ class ExportHelper(private val context: Context) {
         }
 
         try {
-            val json = Json { encodeDefaults = true }
+            val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
             context.contentResolver.openOutputStream(outputUri)?.use { out ->
                 json.encodeToStream(backup, out)
                 callback.invoke(ExportResult.EXPORT_OK)

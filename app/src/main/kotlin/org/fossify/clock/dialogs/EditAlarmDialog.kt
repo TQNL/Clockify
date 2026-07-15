@@ -122,7 +122,7 @@ class EditAlarmDialog(
 
             val dayLetters =
                 activity.resources.getStringArray(org.fossify.commons.R.array.week_day_letters)
-                    .toList() as ArrayList<String>
+                    .toMutableList()
             val dayIndexes = activity.rotateWeekdays(arrayListOf(0, 1, 2, 3, 4, 5, 6))
 
             dayIndexes.forEach {
@@ -153,6 +153,31 @@ class EditAlarmDialog(
                 }
 
                 editAlarmDaysHolder.addView(day)
+            }
+
+            // Folder picker
+            updateFolderLabel()
+            editAlarmFolder.apply {
+                setTextColor(textColor)
+                compoundDrawables.getOrNull(0)?.applyColorFilter(textColor)
+                setOnClickListener {
+                    SelectFolderDialog(
+                        activity = activity,
+                        onFolderSelected = { folderId ->
+                            alarm.folderId = folderId
+                            updateFolderLabel()
+                        },
+                        onCreateNewFolder = {
+                            CreateFolderDialog(activity) { name ->
+                                val newId = activity.dbHelper.insertFolder(name)
+                                if (newId != -1) {
+                                    alarm.folderId = newId
+                                    updateFolderLabel()
+                                }
+                            }
+                        }
+                    )
+                }
             }
         }
 
@@ -216,6 +241,7 @@ class EditAlarmDialog(
                 alarm.soundUri = lastConfig.soundUri
                 alarm.timeInMinutes = lastConfig.timeInMinutes
                 alarm.vibrate = lastConfig.vibrate
+                alarm.folderId = lastConfig.folderId
             }
         }
     }
@@ -267,5 +293,17 @@ class EditAlarmDialog(
         alarm.soundTitle = alarmSound.title
         alarm.soundUri = alarmSound.uri
         binding.editAlarmSound.text = alarmSound.title
+    }
+
+    private fun updateFolderLabel() {
+        val folderId = alarm.folderId
+        val folderName = if (folderId != null) {
+            val folders = activity.dbHelper.getFolders()
+            val folder = folders.firstOrNull { it.id == folderId }
+            folder?.name ?: activity.getString(R.string.no_folder)
+        } else {
+            activity.getString(R.string.no_folder)
+        }
+        binding.editAlarmFolder.text = "${activity.getString(R.string.folder)}:  $folderName"
     }
 }

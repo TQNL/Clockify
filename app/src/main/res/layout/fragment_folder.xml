@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/folder_fragment"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/folder_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        android:elevation="0dp"
+        app:navigationIcon="@drawable/ic_chevron_left_vector"
+        app:title="" />
+
+    <RelativeLayout
+        android:id="@+id/folder_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <org.fossify.commons.views.MyRecyclerView
+            android:id="@+id/folder_alarms_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:overScrollMode="ifContentScrolls"
+            android:paddingBottom="@dimen/fab_list_bottom_padding"
+            android:scrollbars="none"
+            app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager"
+            tools:listitem="@layout/item_alarm" />
+
+        <org.fossify.commons.views.MyTextView
+            android:id="@+id/folder_alarms_placeholder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:alpha="0.8"
+            android:gravity="center"
+            android:padding="@dimen/activity_margin"
+            android:text="@string/no_alarms_found"
+            android:textSize="@dimen/bigger_text_size"
+            android:textStyle="italic"
+            android:visibility="gone" />
+
+    </RelativeLayout>
+
+    <org.fossify.commons.views.MyFloatingActionButton
+        android:id="@+id/folder_fab"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="@dimen/activity_margin"
+        android:src="@drawable/ic_plus_vector" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

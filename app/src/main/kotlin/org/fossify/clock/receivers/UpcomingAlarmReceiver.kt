@@ -14,7 +14,7 @@ import org.fossify.clock.extensions.getSkipUpcomingAlarmPendingIntent
 import org.fossify.clock.extensions.goAsync
 import org.fossify.clock.helpers.ALARM_ID
 import org.fossify.clock.helpers.UPCOMING_ALARM_CHANNEL_ID
-import org.fossify.clock.helpers.UPCOMING_ALARM_NOTIFICATION_ID
+import org.fossify.clock.helpers.UPCOMING_ALARM_NOTIFICATION_BASE
 import org.fossify.commons.extensions.notificationManager
 
 /**
@@ -48,8 +48,9 @@ class UpcomingAlarmReceiver : BroadcastReceiver() {
             }
 
             val contentIntent = context.getOpenAlarmTabIntent()
+            val notificationId = UPCOMING_ALARM_NOTIFICATION_BASE + alarmId
             val dismissIntent = context.getSkipUpcomingAlarmPendingIntent(
-                alarmId = alarmId, notificationId = UPCOMING_ALARM_NOTIFICATION_ID
+                alarmId = alarmId, notificationId = notificationId
             )
 
             val notification = NotificationCompat.Builder(context, UPCOMING_ALARM_CHANNEL_ID)
@@ -68,7 +69,7 @@ class UpcomingAlarmReceiver : BroadcastReceiver() {
                 .setChannelId(UPCOMING_ALARM_CHANNEL_ID)
                 .build()
 
-            notificationManager.notify(UPCOMING_ALARM_NOTIFICATION_ID, notification)
+            notificationManager.notify(notificationId, notification)
         }
     }
 }

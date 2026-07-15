@@ -6,6 +6,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
 import org.fossify.clock.models.Alarm
+import org.fossify.clock.models.AlarmFolder
 import org.fossify.clock.models.AlarmTimerBackup
 import org.fossify.clock.models.Timer
 import org.fossify.commons.extensions.showErrorToast
@@ -27,11 +28,12 @@ class ImportHelper(
         return try {
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 val backup = Json.decodeFromStream<AlarmTimerBackup>(inputStream)
+                val importedFolders = insertFolders(backup.folders)
                 val importedAlarms = insertAlarms(backup.alarms)
                 val importedTimers = insertTimers(backup.timers)
                 when {
-                    importedAlarms > 0 || importedTimers > 0 -> ImportResult.IMPORT_OK
-                    importedAlarms == 0 && importedTimers == 0 -> ImportResult.IMPORT_INCOMPLETE
+                    importedAlarms > 0 || importedTimers > 0 || importedFolders > 0 -> ImportResult.IMPORT_OK
+                    importedAlarms == 0 && importedTimers == 0 && importedFolders == 0 -> ImportResult.IMPORT_INCOMPLETE
                     else -> ImportResult.IMPORT_FAIL
                 }
             } ?: ImportResult.IMPORT_FAIL
@@ -75,6 +77,19 @@ class ImportHelper(
         return insertedCount
     }
 
+    private fun insertFolders(folders: List<AlarmFolder>): Int {
+        var insertedCount = 0
+        val existingFolders = dbHelper.getFolders()
+        folders.forEach { folder ->
+            if (existingFolders.none { f -> f.name == folder.name }) {
+                if (dbHelper.insertFolder(folder.name) != -1) {
+                    insertedCount++
+                }
+            }
+        }
+        return insertedCount
+    }
+
     private fun isAlarmAlreadyInserted(alarm: Alarm, existingAlarms: List<Alarm>): Boolean {
         for (existingAlarm in existingAlarms) {
             if (alarm.timeInMinutes == existingAlarm.timeInMinutes &&
@@ -83,7 +98,8 @@ class ImportHelper(
                 alarm.soundTitle == existingAlarm.soundTitle &&
                 alarm.soundUri == existingAlarm.soundUri &&
                 alarm.label == existingAlarm.label &&
-                alarm.oneShot == existingAlarm.oneShot
+                alarm.oneShot == existingAlarm.oneShot &&
+                alarm.folderId == existingAlarm.folderId
             ) {
                 return true
             }

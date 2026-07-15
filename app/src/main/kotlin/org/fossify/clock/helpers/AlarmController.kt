@@ -11,6 +11,7 @@ import org.fossify.clock.extensions.updateWidgets
 import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmEvent
 import org.fossify.clock.services.AlarmService
+import org.fossify.commons.extensions.notificationManager
 import org.fossify.commons.extensions.removeBit
 import org.fossify.commons.extensions.showErrorToast
 import org.fossify.commons.helpers.ensureBackgroundThread
@@ -157,6 +158,11 @@ class AlarmController(
     fun snoozeAlarm(alarmId: Int, snoozeMinutes: Int) {
         sendIntentToService(AlarmService.ACTION_STOP_ALARM, alarmId)
         bus.post(AlarmEvent.Stopped(alarmId))
+
+        // Dismiss the upcoming-alarm notification defensively. AlarmReceiver normally
+        // cancels it before snooze runs, but if snooze is called via an unusual path
+        // (e.g., SnoozeReminderActivity), the notification might still be visible.
+        context.notificationManager.cancel(UPCOMING_ALARM_NOTIFICATION_BASE + alarmId)
 
         ensureBackgroundThread {
             val alarm = db.getAlarmWithId(alarmId)

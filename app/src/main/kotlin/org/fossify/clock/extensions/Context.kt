@@ -44,7 +44,7 @@ import org.fossify.clock.helpers.TIMER_ID
 import org.fossify.clock.helpers.TODAY_BIT
 import org.fossify.clock.helpers.TOMORROW_BIT
 import org.fossify.clock.helpers.TimerHelper
-import org.fossify.clock.helpers.UPCOMING_ALARM_INTENT_ID
+import org.fossify.clock.helpers.UPCOMING_ALARM_INTENT_BASE
 import org.fossify.clock.helpers.formatTime
 import org.fossify.clock.helpers.getAllTimeZones
 import org.fossify.clock.helpers.getDefaultTimeZoneTitle
@@ -199,12 +199,14 @@ fun Context.setupAlarmClock(alarm: Alarm, triggerTimeMillis: Long) {
             getAlarmIntent(alarm)
         )
 
-        // show a notification to allow dismissing the alarm 10 minutes before it actually triggers
+        // Show the upcoming-alarm dismissal notification X minutes before the alarm triggers.
+        // Configurable via Settings (default: 30 minutes).
+        val advanceMillis = config.upcomingAlarmAdvanceMinutes.minutes.inWholeMilliseconds
         val dismissalTriggerTime =
-            if (triggerTimeMillis - System.currentTimeMillis() < 10.minutes.inWholeMilliseconds) {
+            if (triggerTimeMillis - System.currentTimeMillis() < advanceMillis) {
                 System.currentTimeMillis() + 500
             } else {
-                triggerTimeMillis - 10.minutes.inWholeMilliseconds
+                triggerTimeMillis - advanceMillis
             }
 
         AlarmManagerCompat.setExactAndAllowWhileIdle(
@@ -225,7 +227,7 @@ fun Context.getUpcomingAlarmPendingIntent(alarm: Alarm): PendingIntent {
 
     return PendingIntent.getBroadcast(
         this,
-        UPCOMING_ALARM_INTENT_ID,
+        UPCOMING_ALARM_INTENT_BASE + alarm.id,
         intent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
@@ -420,6 +422,15 @@ fun Context.getEnabledAlarms(callback: (result: List<Alarm>?) -> Unit) {
     }
 }
 
+fun Context.getAllAlarms(callback: (result: List<Alarm>?) -> Unit) {
+    ensureBackgroundThread {
+        val alarms = dbHelper.getAlarms()
+        Handler(Looper.getMainLooper()).post {
+            callback(alarms)
+        }
+    }
+}
+
 fun Context.getTimerNotification(timer: Timer, pendingIntent: PendingIntent): Notification {
     var soundUri = timer.soundUri
     if (soundUri == SILENT) {
@@ -584,4 +595,90 @@ fun Context.firstDayOrder(bitMask: Int): Int {
     }
 
     return bitMask
+}
+
+/**
+ * Samsung-style countdown string: "Alarm in 12 hours 33 minutes"
+ * Also returns the full datetime for secondary display.
+ */
+data class AlarmHeroInfo(
+    val countdownText: String,
+    val dateTimeText: String,
+    val closestAlarmCalendar: Calendar?,
+)
+
+fun Context.getAlarmHeroInfo(callback: (AlarmHeroInfo) -> Unit) {
+    getEnabledAlarms { enabledAlarms ->
+        if (enabledAlarms.isNullOrEmpty()) {
+            callback(AlarmHeroInfo("", "", null))
+            return@getEnabledAlarms
+        }
+
+        val now = Calendar.getInstance()
+
+        // Calculate next alarm from our enabled-alarm data
+        val nextAlarmList = enabledAlarms
+            .mapNotNull(::getTimeOfNextAlarm)
+            .filter { it > now }
+
+        var closestAlarmTime = nextAlarmList.minOrNull()
+
+        // Check the system alarm clock for snoozes — when an alarm is snoozed,
+        // AlarmController.snoozeAlarm() calls setupAlarmClock() which re-registers
+        // the system alarm clock with the snoozed trigger time.
+        val systemAlarmClock = alarmManager.nextAlarmClock
+        if (systemAlarmClock != null) {
+            val systemTrigger = Calendar.getInstance().apply {
+                timeInMillis = systemAlarmClock.triggerTime
+            }
+            if (systemTrigger > now) {
+                if (closestAlarmTime == null || systemTrigger < closestAlarmTime) {
+                    closestAlarmTime = systemTrigger
+                }
+            }
+        }
+
+        if (closestAlarmTime == null) {
+            callback(AlarmHeroInfo("", "", null))
+            return@getEnabledAlarms
+        }
+
+        val nowMs = now.timeInMillis
+        val alarmMs = closestAlarmTime.timeInMillis
+        val remainingMs = alarmMs - nowMs
+
+        val totalMinutes = (remainingMs / 60_000).toInt()
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+
+        val countdownText = when {
+            hours > 1 && minutes > 1 -> getString(R.string.alarm_in_hours_minutes, hours, minutes)
+            hours > 1 && minutes == 1 -> getString(R.string.alarm_in_hours_one_minute, hours)
+            hours > 1 && minutes == 0 -> getString(R.string.alarm_in_hours, hours)
+            hours == 1 && minutes > 1 -> getString(R.string.alarm_in_one_hour_minutes, minutes)
+            hours == 1 && minutes == 1 -> getString(R.string.alarm_in_one_hour_one_minute)
+            hours == 1 && minutes == 0 -> getString(R.string.alarm_in_one_hour)
+            hours == 0 && minutes > 1 -> getString(R.string.alarm_in_minutes, minutes)
+            hours == 0 && minutes == 1 -> getString(R.string.alarm_in_one_minute)
+            else -> getString(R.string.alarm_in_less_than_minute)
+        }
+
+        val dayOfWeekIndex = (closestAlarmTime.get(Calendar.DAY_OF_WEEK) + 5) % 7
+        val dayOfWeek =
+            resources.getStringArray(org.fossify.commons.R.array.week_days_short)[dayOfWeekIndex]
+        val dayOfMonth = closestAlarmTime.get(Calendar.DAY_OF_MONTH)
+        val monthIndex = closestAlarmTime.get(Calendar.MONTH)
+        val month = resources.getStringArray(org.fossify.commons.R.array.months)[monthIndex]
+        val pattern = if (config.use24HourFormat) {
+            FORMAT_24H
+        } else {
+            FORMAT_12H
+        }
+        val formattedTime =
+            SimpleDateFormat(pattern, Locale.getDefault()).format(closestAlarmTime.time)
+        val dateTimeText = "$dayOfWeek, $dayOfMonth $month, $formattedTime"
+
+        val countdownFull = "${getString(R.string.alarm_in)} $countdownText"
+        callback(AlarmHeroInfo(countdownFull, dateTimeText, closestAlarmTime))
+    }
 }

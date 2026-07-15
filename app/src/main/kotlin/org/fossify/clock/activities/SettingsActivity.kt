@@ -9,12 +9,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import org.fossify.clock.R
 import org.fossify.clock.databinding.ActivitySettingsBinding
 import org.fossify.clock.dialogs.ExportDataDialog
+import org.fossify.clock.extensions.alarmController
 import org.fossify.clock.extensions.config
 import org.fossify.clock.extensions.dbHelper
 import org.fossify.clock.extensions.timerDb
 import org.fossify.clock.extensions.updateWidgets
 import org.fossify.clock.helpers.DEFAULT_MAX_ALARM_REMINDER_SECS
 import org.fossify.clock.helpers.DEFAULT_MAX_TIMER_REMINDER_SECS
+import org.fossify.clock.helpers.DEFAULT_UPCOMING_ALARM_ADVANCE_MINUTES
 import org.fossify.clock.helpers.EXPORT_BACKUP_MIME_TYPE
 import org.fossify.clock.helpers.ExportHelper
 import org.fossify.clock.helpers.IMPORT_BACKUP_MIME_TYPES
@@ -24,6 +26,7 @@ import org.fossify.clock.helpers.TAB_CLOCK
 import org.fossify.clock.helpers.TAB_STOPWATCH
 import org.fossify.clock.helpers.TAB_TIMER
 import org.fossify.clock.helpers.TimerHelper
+import org.fossify.clock.models.AlarmEvent
 import org.fossify.clock.models.AlarmTimerBackup
 import org.fossify.commons.dialogs.RadioGroupDialog
 import org.fossify.commons.extensions.beGone
@@ -41,6 +44,7 @@ import org.fossify.commons.extensions.viewBinding
 import org.fossify.commons.helpers.ExportResult
 import org.fossify.commons.helpers.IS_CUSTOMIZING_COLORS
 import org.fossify.commons.helpers.MINUTE_SECONDS
+import org.greenrobot.eventbus.EventBus
 import org.fossify.commons.helpers.NavigationIcon
 import org.fossify.commons.helpers.TAB_LAST_USED
 import org.fossify.commons.helpers.ensureBackgroundThread
@@ -88,6 +92,7 @@ class SettingsActivity : SimpleActivity() {
         setupPreventPhoneFromSleeping()
         setupStartWeekOn()
         setupAlarmMaxReminder()
+        setupUpcomingAlarmAdvance()
         setupUseSameSnooze()
         setupSnoozeTime()
         setupTimerMaxReminder()
@@ -235,6 +240,20 @@ class SettingsActivity : SimpleActivity() {
         }
     }
 
+    private fun setupUpcomingAlarmAdvance() {
+        updateUpcomingAlarmAdvanceText()
+        binding.settingsUpcomingAlarmAdvanceHolder.setOnClickListener {
+            showPickSecondsDialog(
+                curSeconds = config.upcomingAlarmAdvanceMinutes * MINUTE_SECONDS,
+                isSnoozePicker = true
+            ) {
+                config.upcomingAlarmAdvanceMinutes =
+                    if (it != 0) it / MINUTE_SECONDS else DEFAULT_UPCOMING_ALARM_ADVANCE_MINUTES
+                updateUpcomingAlarmAdvanceText()
+            }
+        }
+    }
+
     private fun setupSnoozeTime() {
         updateSnoozeText()
         binding.settingsSnoozeTimeHolder.setOnClickListener {
@@ -272,6 +291,11 @@ class SettingsActivity : SimpleActivity() {
 
     private fun updateSnoozeText() {
         binding.settingsSnoozeTime.text = formatMinutesToTimeString(config.snoozeTime)
+    }
+
+    private fun updateUpcomingAlarmAdvanceText() {
+        binding.settingsUpcomingAlarmAdvance.text =
+            getString(R.string.upcoming_alarm_advance_minutes, config.upcomingAlarmAdvanceMinutes)
     }
 
     private fun updateAlarmMaxReminderText() {
@@ -360,5 +384,15 @@ class SettingsActivity : SimpleActivity() {
                 ImportHelper.ImportResult.IMPORT_FAIL -> org.fossify.commons.R.string.no_items_found
             }
         )
+
+        // Imported enabled alarms need AlarmManager registration and the UI needs
+        // a refresh. Without this, imported alarms are orphaned — they exist in the DB
+        // but never fire until the app restarts.
+        if (result == ImportHelper.ImportResult.IMPORT_OK ||
+            result == ImportHelper.ImportResult.IMPORT_INCOMPLETE
+        ) {
+            alarmController.rescheduleEnabledAlarms()
+            EventBus.getDefault().post(AlarmEvent.Refresh)
+        }
     }
 }

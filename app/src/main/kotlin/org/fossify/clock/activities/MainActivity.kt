@@ -18,6 +18,8 @@ import org.fossify.clock.extensions.config
 import org.fossify.clock.extensions.getEnabledAlarms
 import org.fossify.clock.extensions.handleFullScreenNotificationsPermission
 import org.fossify.clock.extensions.updateWidgets
+import org.fossify.clock.fragments.AlarmFragment
+import org.fossify.clock.fragments.FolderFragment
 import org.fossify.clock.helpers.INVALID_TIMER_ID
 import org.fossify.clock.helpers.OPEN_TAB
 import org.fossify.clock.helpers.PICK_AUDIO_FILE_INTENT_ID
@@ -405,6 +407,18 @@ class MainActivity : SimpleActivity() {
             config.migrateFirstDayOfWeek = false
             config.firstDayOfWeek = WeekFields.of(Locale.getDefault()).firstDayOfWeek.value
         }
+    }
+
+    fun openFolderFragment(folderId: Int, folderName: String) {
+        val fragment = FolderFragment.newInstance(folderId, folderName)
+        supportFragmentManager.beginTransaction()
+            .replace(android.R.id.content, fragment)
+            .addToBackStack("folder_$folderId")
+            .commit()
+    }
+
+    fun closeFolderFragment() {
+        supportFragmentManager.popBackStack()
     }
 
     private fun getTabIndex(tabId: Int): Int {
