@@ -8,6 +8,7 @@ import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.ObfuscatedAlarm
 import org.fossify.clock.models.ObfuscatedTimer
 import org.fossify.clock.models.Timer
+import org.fossify.clock.helpers.ALARMS_FOLDER_CUSTOM_SORTING_PREFIX
 import org.fossify.commons.extensions.getDefaultAlarmSound
 import org.fossify.commons.extensions.getDefaultAlarmTitle
 import org.fossify.commons.helpers.BaseConfig
@@ -73,6 +74,13 @@ class Config(context: Context) : BaseConfig(context) {
         set(alarmsCustomSorting) = prefs.edit {
             putString(ALARMS_CUSTOM_SORTING, alarmsCustomSorting)
         }
+
+    /** Per-folder custom alarm ordering (null if none saved). */
+    fun getFolderAlarmsCustomSorting(folderId: Int): String? =
+        prefs.getString("${ALARMS_FOLDER_CUSTOM_SORTING_PREFIX}$folderId", null)
+
+    fun setFolderAlarmsCustomSorting(folderId: Int, order: String) =
+        prefs.edit { putString("${ALARMS_FOLDER_CUSTOM_SORTING_PREFIX}$folderId", order) }
 
     var timerSort: Int
         get() = prefs.getInt(TIMERS_SORT_BY, SORT_BY_CREATION_ORDER)

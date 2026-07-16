@@ -282,6 +282,7 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface {
                         (activity as? MainActivity)?.openFolderFragment(folder.id, folder.name)
                     },
                     folderAlarmCounts = folderCounts,
+                    folderId = folderId,
                 ).apply {
                     binding.alarmsList.adapter = this
                 }

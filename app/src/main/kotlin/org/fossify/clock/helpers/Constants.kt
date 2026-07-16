@@ -34,6 +34,7 @@ const val TIMER_LAST_CONFIG = "timer_last_config"
 const val INCREASE_VOLUME_GRADUALLY = "increase_volume_gradually"
 const val ALARMS_SORT_BY = "alarms_sort_by"
 const val ALARMS_CUSTOM_SORTING = "alarms_custom_sorting"
+const val ALARMS_FOLDER_CUSTOM_SORTING_PREFIX = "alarms_folder_custom_sorting_" // + folderId
 const val TIMERS_SORT_BY = "timers_sort_by"
 const val TIMERS_CUSTOM_SORTING = "timers_custom_sorting"
 const val STOPWATCH_LAPS_SORT_BY = "stopwatch_laps_sort_by"

@@ -48,7 +48,8 @@ class FolderFragment : AlarmFragment {
         callback: (items: ArrayList<Any>, folders: List<AlarmFolder>, folderCounts: Map<Int, FolderAlarmCounts>) -> Unit
     ) {
         val safeContext = context ?: return
-        val folderAlarms = safeContext.dbHelper.getAlarmsInFolder(folderId ?: return)
+        val fid = folderId ?: return
+        val folderAlarms = safeContext.dbHelper.getAlarmsInFolder(fid)
         val sorted = when (safeContext.config.alarmSort) {
             SORT_BY_ALARM_TIME -> folderAlarms.sortedBy { it.timeInMinutes }
             SORT_BY_DATE_CREATED -> folderAlarms.sortedBy { it.id }
@@ -58,8 +59,9 @@ class FolderFragment : AlarmFragment {
                 it.timeInMinutes
             })
             SORT_BY_CUSTOM -> {
-                val customOrder = safeContext.config.alarmsCustomSorting
-                if (customOrder.isNullOrEmpty()) {
+                val customOrder = safeContext.config.getFolderAlarmsCustomSorting(fid)
+                    ?: safeContext.config.alarmsCustomSorting // fallback to global
+                if (customOrder.isEmpty()) {
                     folderAlarms.sortedBy { it.id }
                 } else {
                     val orderIds = customOrder.split(", ").mapNotNull { it.toIntOrNull() }

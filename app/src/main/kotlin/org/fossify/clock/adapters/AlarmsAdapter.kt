@@ -41,6 +41,8 @@ class AlarmsAdapter(
     itemClick: (Any) -> Unit,
     private val folderClick: (AlarmFolder) -> Unit,
     private val folderAlarmCounts: Map<Int, FolderAlarmCounts>,
+    /** Non-null when this adapter is inside a folder view — routes manual ordering to a per-folder config key. */
+    private val folderId: Int? = null,
 ) : MyRecyclerViewAdapter(activity, recyclerView, itemClick), ItemTouchHelperContract {
 
     companion object {
@@ -297,6 +299,11 @@ class AlarmsAdapter(
     private fun saveAlarmsCustomOrder(allItems: List<Any>) {
         val alarms = allItems.filterIsInstance<Alarm>() as ArrayList<Alarm>
         val alarmsCustomSortingIds = alarms.map { it.id }
-        activity.config.alarmsCustomSorting = alarmsCustomSortingIds.joinToString { it.toString() }
+        val orderString = alarmsCustomSortingIds.joinToString { it.toString() }
+        if (folderId != null) {
+            activity.config.setFolderAlarmsCustomSorting(folderId, orderString)
+        } else {
+            activity.config.alarmsCustomSorting = orderString
+        }
     }
 }
