@@ -44,7 +44,7 @@ class DBHelper private constructor(
     private val mDb = writableDatabase
 
     companion object {
-        private const val DB_VERSION = 3
+        private const val DB_VERSION = 4
         const val DB_NAME = "alarms.db"
 
         @SuppressLint("StaticFieldLeak")
@@ -63,7 +63,7 @@ class DBHelper private constructor(
         db.execSQL(
             "CREATE TABLE IF NOT EXISTS $ALARMS_TABLE_NAME ($COL_ID INTEGER PRIMARY KEY AUTOINCREMENT, $COL_TIME_IN_MINUTES INTEGER, $COL_DAYS INTEGER, " +
                 "$COL_IS_ENABLED INTEGER, $COL_VIBRATE INTEGER, $COL_SOUND_TITLE TEXT, $COL_SOUND_URI TEXT, $COL_LABEL TEXT, $COL_ONE_SHOT INTEGER, " +
-                "$COL_FOLDER_ID INTEGER)"
+                "$COL_FOLDER_ID INTEGER DEFAULT NULL)"
         )
         db.execSQL(
             "CREATE TABLE IF NOT EXISTS $FOLDERS_TABLE_NAME ($COL_ID INTEGER PRIMARY KEY AUTOINCREMENT, $COL_NAME TEXT NOT NULL, $COL_CREATED_AT INTEGER NOT NULL)"
@@ -75,11 +75,12 @@ class DBHelper private constructor(
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE $ALARMS_TABLE_NAME ADD COLUMN $COL_ONE_SHOT INTEGER NOT NULL DEFAULT 0")
         }
-        if (oldVersion < 3) {
-            db.execSQL("ALTER TABLE $ALARMS_TABLE_NAME ADD COLUMN $COL_FOLDER_ID INTEGER")
-            db.execSQL(
-                "CREATE TABLE IF NOT EXISTS $FOLDERS_TABLE_NAME ($COL_ID INTEGER PRIMARY KEY AUTOINCREMENT, $COL_NAME TEXT NOT NULL, $COL_CREATED_AT INTEGER NOT NULL)"
-            )
+        if (oldVersion < 4) {
+            try {
+                db.execSQL("ALTER TABLE $ALARMS_TABLE_NAME ADD COLUMN $COL_FOLDER_ID INTEGER DEFAULT NULL")
+            } catch (_: Exception) {
+                // Column may already exist from previous folder infrastructure
+            }
         }
     }
 
@@ -144,7 +145,8 @@ class DBHelper private constructor(
             put(COL_SOUND_URI, alarm.soundUri)
             put(COL_LABEL, alarm.label)
             put(COL_ONE_SHOT, alarm.oneShot)
-            put(COL_FOLDER_ID, alarm.folderId)
+            if (alarm.folderId != null) put(COL_FOLDER_ID, alarm.folderId)
+            else putNull(COL_FOLDER_ID)
         }
     }
 
@@ -179,8 +181,8 @@ class DBHelper private constructor(
                         val soundUri = cursor.getStringValue(COL_SOUND_URI)
                         val label = cursor.getStringValue(COL_LABEL)
                         val oneShot = cursor.getIntValue(COL_ONE_SHOT) == 1
-                        val folderIdColIdx = cursor.getColumnIndex(COL_FOLDER_ID)
-                        val folderId = if (cursor.isNull(folderIdColIdx)) null else cursor.getInt(folderIdColIdx)
+                        val folderIdIdx = cursor.getColumnIndex(COL_FOLDER_ID)
+                        val folderId = if (cursor.isNull(folderIdIdx)) null else cursor.getIntValue(COL_FOLDER_ID)
 
                         val alarm = Alarm(
                             id = id,
@@ -246,27 +248,16 @@ class DBHelper private constructor(
     }
 
     fun deleteFolder(folderId: Int) {
-        // Move all alarms in this folder back to uncategorized
-        val values = ContentValues().apply {
-            putNull(COL_FOLDER_ID)
-        }
-        mDb.update(ALARMS_TABLE_NAME, values, "$COL_FOLDER_ID = ?", arrayOf(folderId.toString()))
         mDb.delete(FOLDERS_TABLE_NAME, "$COL_ID = ?", arrayOf(folderId.toString()))
     }
-
-    fun getUncategorizedAlarms(): List<Alarm> = getAlarms().filter { it.folderId == null }
 
     fun getAlarmsInFolder(folderId: Int): List<Alarm> = getAlarms().filter { it.folderId == folderId }
 
     fun moveAlarmToFolder(alarmId: Int, folderId: Int?) {
-        val values = ContentValues().apply {
-            if (folderId != null) put(COL_FOLDER_ID, folderId)
-            else putNull(COL_FOLDER_ID)
-        }
+        val values = ContentValues()
+        if (folderId != null) values.put(COL_FOLDER_ID, folderId)
+        else values.putNull(COL_FOLDER_ID)
         mDb.update(ALARMS_TABLE_NAME, values, "$COL_ID = ?", arrayOf(alarmId.toString()))
     }
 
-    fun moveAlarmsToFolder(alarmIds: List<Int>, folderId: Int?) {
-        alarmIds.forEach { moveAlarmToFolder(it, folderId) }
-    }
 }

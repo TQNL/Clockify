@@ -43,24 +43,11 @@
             android:layout_marginBottom="@dimen/medium_margin"
             android:orientation="horizontal" />
 
-        <org.fossify.commons.views.MyTextView
-            android:id="@+id/edit_alarm_folder"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_below="@+id/edit_alarm_days_holder"
-            android:background="?attr/selectableItemBackground"
-            android:drawableStart="@drawable/ic_folder_vector"
-            android:drawablePadding="@dimen/normal_margin"
-            android:gravity="center_vertical"
-            android:padding="@dimen/activity_margin"
-            android:textSize="@dimen/bigger_text_size"
-            tools:text="None" />
-
         <RelativeLayout
             android:id="@+id/edit_alarm_vibrate_holder"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_below="@+id/edit_alarm_folder"
+            android:layout_below="@+id/edit_alarm_days_holder"
             android:background="?attr/selectableItemBackground"
             android:paddingStart="@dimen/activity_margin"
             android:paddingTop="@dimen/medium_margin"

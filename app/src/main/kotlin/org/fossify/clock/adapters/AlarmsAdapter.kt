@@ -34,17 +34,17 @@ import org.greenrobot.eventbus.EventBus
 
 class AlarmsAdapter(
     activity: SimpleActivity,
-    private var items: List<Any>,
+    private var items: ArrayList<Any>,
     private val toggleAlarmInterface: ToggleAlarmInterface,
     recyclerView: MyRecyclerView,
     itemClick: (Any) -> Unit,
-    private val folderClick: ((AlarmFolder) -> Unit)? = null,
-    private val isFolderContext: Boolean = false,
+    private val folderClick: (AlarmFolder) -> Unit,
+    private val folderAlarmCounts: Map<Int, Int>,
 ) : MyRecyclerViewAdapter(activity, recyclerView, itemClick), ItemTouchHelperContract {
 
     companion object {
-        const val TYPE_FOLDER = 0
-        const val TYPE_ALARM = 1
+        private const val TYPE_ALARM = 0
+        private const val TYPE_FOLDER = 1
     }
 
     private var startReorderDragListener: StartReorderDragListener
@@ -63,38 +63,19 @@ class AlarmsAdapter(
 
     override fun getActionMenuId() = R.menu.cab_alarms
 
-    override fun prepareActionMode(menu: Menu) {
-        if (isFolderContext) {
-            // In folder context: show "Remove from folder" instead of "Move to folder"
-            menu.findItem(R.id.cab_move_to_folder)?.let {
-                it.setTitle(R.string.remove_from_folder)
-                it.isVisible = true
-            }
-        } else {
-            // On home screen: show "Move to folder" only for uncategorized alarms
-            val hasUncategorized = selectedKeys.any { key ->
-                (items.firstOrNull { it is Alarm && it.id == key } as? Alarm)?.folderId == null
-            }
-            menu.findItem(R.id.cab_move_to_folder)?.let {
-                it.setTitle(R.string.move_to_folder)
-                it.isVisible = hasUncategorized
-            }
-        }
-    }
+    override fun prepareActionMode(menu: Menu) {}
 
     override fun actionItemPressed(id: Int) {
         if (selectedKeys.isEmpty()) return
-
-        when (id) {
-            R.id.cab_delete -> deleteItems()
-            R.id.cab_move_to_folder -> {
-                // Delegate to external handler via callback pattern
-                onMoveToFolderRequested?.invoke(getSelectedAlarms())
-            }
-        }
+        if (id == R.id.cab_delete) deleteItems()
     }
 
-    override fun getSelectableItemCount() = items.count { it is Alarm }
+    override fun getItemViewType(position: Int) = when (items.getOrNull(position)) {
+        is AlarmFolder -> TYPE_FOLDER
+        else -> TYPE_ALARM
+    }
+
+    override fun getSelectableItemCount() = items.filterIsInstance<Alarm>().size
 
     override fun getIsItemSelectable(position: Int) = items.getOrNull(position) is Alarm
 
@@ -103,16 +84,7 @@ class AlarmsAdapter(
         return if (item is Alarm) item.id else null
     }
 
-    override fun getItemKeyPosition(key: Int) = items.indexOfFirst {
-        it is Alarm && it.id == key
-    }
-
-    override fun getItemViewType(position: Int): Int {
-        return when (items[position]) {
-            is AlarmFolder -> TYPE_FOLDER
-            else -> TYPE_ALARM
-        }
-    }
+    override fun getItemKeyPosition(key: Int) = items.indexOfFirst { (it as? Alarm)?.id == key }
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onActionModeCreated() {
@@ -150,6 +122,7 @@ class AlarmsAdapter(
                 ) { itemView, _ ->
                     setupFolderView(itemView, item)
                 }
+                bindViewHolder(holder)
             }
             is Alarm -> {
                 holder.bindView(
@@ -159,15 +132,15 @@ class AlarmsAdapter(
                 ) { itemView, _ ->
                     setupView(itemView, item, holder)
                 }
+                bindViewHolder(holder)
             }
         }
-        bindViewHolder(holder)
     }
 
     override fun getItemCount() = items.size
 
     @SuppressLint("NotifyDataSetChanged")
-    fun updateItems(newItems: List<Any>) {
+    fun updateItems(newItems: ArrayList<Any>) {
         items = newItems
         notifyDataSetChanged()
         finishActMode()
@@ -180,7 +153,7 @@ class AlarmsAdapter(
             alarmsToRemove.add(it)
         }
 
-        items = items.filter { it !in alarmsToRemove }
+        items = ArrayList(items.filter { it !in alarmsToRemove })
         removeSelectedItems(positions)
         activity.dbHelper.deleteAlarms(alarmsToRemove)
         EventBus.getDefault().post(AlarmEvent.Refresh)
@@ -192,9 +165,12 @@ class AlarmsAdapter(
         } as ArrayList<Alarm>
     }
 
-    private fun getSelectedAlarms(): List<Alarm> {
-        return items.filterIsInstance<Alarm>().filter {
-            selectedKeys.contains(it.id)
+    private fun setupFolderView(view: View, folder: AlarmFolder) {
+        ItemFolderBinding.bind(view).apply {
+            folderName.text = folder.name
+            val count = folderAlarmCounts[folder.id] ?: 0
+            folderCount.text = count.toString()
+            folderHolder.setOnClickListener { folderClick(folder) }
         }
     }
 
@@ -229,29 +205,6 @@ class AlarmsAdapter(
             alarmSwitch.setColors(textColor, properPrimaryColor, backgroundColor)
             alarmSwitch.setOnClickListener {
                 toggleAlarm(binding = this, alarm = alarm)
-            }
-        }
-    }
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupFolderView(view: View, folder: AlarmFolder) {
-        ItemFolderBinding.bind(view).apply {
-            folderName.text = folder.name
-            folderName.setTextColor(textColor)
-            folderIcon.applyColorFilter(properPrimaryColor)
-            folderChevron.applyColorFilter(textColor)
-
-            val alarmCount = folderAlarmCounts[folder.id] ?: 0
-            val countText = when {
-                alarmCount == 0 -> activity.getString(R.string.no_alarms)
-                alarmCount == 1 -> activity.getString(R.string.n_alarm, alarmCount)
-                else -> activity.getString(R.string.n_alarms, alarmCount)
-            }
-            folderAlarmCount.text = countText
-            folderAlarmCount.setTextColor(textColor)
-
-            folderHolder.setOnClickListener {
-                folderClick?.invoke(folder)
             }
         }
     }
@@ -327,20 +280,18 @@ class AlarmsAdapter(
     override fun onRowMoved(fromPosition: Int, toPosition: Int) {
         val mutableItems = items.toMutableList()
         mutableItems.move(fromPosition, toPosition)
-        items = mutableItems
+        items = ArrayList(mutableItems)
         notifyItemMoved(fromPosition, toPosition)
-        saveAlarmsCustomOrder(mutableItems.filterIsInstance<Alarm>() as ArrayList<Alarm>)
+        saveAlarmsCustomOrder(items)
         if (activity.config.alarmSort != SORT_BY_CUSTOM) {
             activity.config.alarmSort = SORT_BY_CUSTOM
         }
     }
 
-    private fun saveAlarmsCustomOrder(alarms: ArrayList<Alarm>) {
+    @Suppress("UNCHECKED_CAST")
+    private fun saveAlarmsCustomOrder(allItems: List<Any>) {
+        val alarms = allItems.filterIsInstance<Alarm>() as ArrayList<Alarm>
         val alarmsCustomSortingIds = alarms.map { it.id }
         activity.config.alarmsCustomSorting = alarmsCustomSortingIds.joinToString { it.toString() }
     }
-
-    // External handlers set by the fragment
-    var onMoveToFolderRequested: ((List<Alarm>) -> Unit)? = null
-    var folderAlarmCounts: Map<Int, Int> = emptyMap()
 }

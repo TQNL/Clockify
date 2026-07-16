@@ -15,7 +15,6 @@ import org.fossify.clock.databinding.FragmentAlarmBinding
 import org.fossify.clock.dialogs.ChangeAlarmSortDialog
 import org.fossify.clock.dialogs.CreateFolderDialog
 import org.fossify.clock.dialogs.EditAlarmDialog
-import org.fossify.clock.dialogs.SelectFolderDialog
 import org.fossify.clock.extensions.alarmController
 import org.fossify.clock.extensions.cancelAlarmClock
 import org.fossify.clock.extensions.config
@@ -96,6 +95,13 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
         }
     }
 
+    fun showCreateFolderDialog() {
+        CreateFolderDialog(activity as SimpleActivity) { name ->
+            activity?.dbHelper?.insertFolder(name)
+            setupAlarms()
+        }
+    }
+
     private fun setupViews() {
         binding.apply {
             requireContext().updateTextColors(alarmFragment)
@@ -144,20 +150,20 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
         }
     }
 
-    // --- Alarm list (folders + uncategorized alarms) ---
+    // --- Alarm list ---
 
-    private fun getSortedAlarms(callback: (items: ArrayList<Any>) -> Unit) {
+    private fun getSortedAlarms(callback: (items: ArrayList<Any>, folders: List<AlarmFolder>, folderCounts: Map<Int, Int>) -> Unit) {
         val safeContext = context ?: return
         ensureBackgroundThread {
             val allAlarms = context?.dbHelper?.getAlarms() ?: return@ensureBackgroundThread
             val folders = context?.dbHelper?.getFolders() ?: emptyList()
             val uncategorizedAlarms = allAlarms.filter { it.folderId == null }
 
-            // Sort folders by creation time (oldest first)
-            val sortedFolders = folders.sortedBy { it.createdAt }
+            val folderCounts = folders.associate { folder ->
+                folder.id to allAlarms.count { it.folderId == folder.id }
+            }
 
-            // Sort uncategorized alarms by selected sort mode
-            val sortedUncategorized = when (safeContext.config.alarmSort) {
+            val sorted = when (safeContext.config.alarmSort) {
                 SORT_BY_ALARM_TIME -> uncategorizedAlarms.sortedBy { it.timeInMinutes }
                 SORT_BY_DATE_CREATED -> uncategorizedAlarms.sortedBy { it.id }
                 SORT_BY_DATE_AND_TIME -> uncategorizedAlarms.sortedWith(compareBy<Alarm> {
@@ -182,94 +188,53 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
                 else -> uncategorizedAlarms
             }
 
-            // Merge: folders first, then uncategorized alarms
-            val result = ArrayList<Any>(sortedFolders.size + sortedUncategorized.size)
-            result.addAll(sortedFolders)
-            result.addAll(sortedUncategorized)
+            // Merge: folders come first, then uncategorized alarms
+            val mixed: ArrayList<Any> = ArrayList(folders.toList())
+            mixed.addAll(ArrayList(sorted))
 
             activity?.runOnUiThread {
-                callback(result)
+                callback(mixed, folders, folderCounts)
             }
         }
     }
 
     private fun setupAlarms() {
-        getSortedAlarms { sortedItems ->
-            items = sortedItems
+        getSortedAlarms { mixed, folders, folderCounts ->
+            items = ArrayList(mixed)
             val safeActivity = activity as? SimpleActivity ?: return@getSortedAlarms
-
-            // Compute per-folder alarm counts from all alarms (not just uncategorized)
-            val allAlarms = safeActivity.dbHelper.getAlarms()
-            val folderCounts = allAlarms
-                .filter { it.folderId != null }
-                .groupBy { it.folderId!! }
-                .mapValues { it.value.size }
 
             var currAdapter = binding.alarmsList.adapter as? AlarmsAdapter
             if (currAdapter == null) {
                 currAdapter = AlarmsAdapter(
                     activity = safeActivity,
-                    items = items,
+                    items = mixed,
                     toggleAlarmInterface = this,
                     recyclerView = binding.alarmsList,
                     itemClick = { clicked ->
                         when (clicked) {
                             is Alarm -> openEditAlarm(clicked)
+                            is AlarmFolder -> (activity as? MainActivity)?.openFolderFragment(clicked.id, clicked.name)
                         }
                     },
                     folderClick = { folder ->
-                        openFolder(folder)
-                    }
+                        (activity as? MainActivity)?.openFolderFragment(folder.id, folder.name)
+                    },
+                    folderAlarmCounts = folderCounts,
                 ).apply {
                     binding.alarmsList.adapter = this
-                    folderAlarmCounts = folderCounts
-                    // Wire up "Move to folder" action
-                    onMoveToFolderRequested = { selectedAlarms ->
-                        showMoveToFolderDialog(selectedAlarms)
-                    }
                 }
             } else {
                 currAdapter.apply {
-                    folderAlarmCounts = folderCounts
                     updatePrimaryColor()
                     updateBackgroundColor(safeActivity.getProperBackgroundColor())
                     updateTextColor(safeActivity.getProperTextColor())
-                    updateItems(items)
+                    updateItems(mixed)
                 }
             }
 
-            // Placeholder: show only if no folders AND no uncategorized alarms
             val hasContent = items.isNotEmpty()
             binding.alarmsPlaceholder.beVisibleIf(!hasContent)
         }
-    }
-
-    private fun openFolder(folder: AlarmFolder) {
-        val activity = activity as? MainActivity ?: return
-        activity.openFolderFragment(folder.id, folder.name)
-    }
-
-    private fun showMoveToFolderDialog(alarms: List<Alarm>) {
-        val safeActivity = activity as? SimpleActivity ?: return
-        SelectFolderDialog(
-            activity = safeActivity,
-            onFolderSelected = { folderId ->
-                safeActivity.dbHelper.moveAlarmsToFolder(alarms.map { it.id }, folderId)
-                setupAlarms()
-                updateAlarmHero()
-            },
-            onCreateNewFolder = {
-                CreateFolderDialog(safeActivity) {
-                    // After creating folder, move alarms into it
-                    val newFolderId = safeActivity.dbHelper.insertFolder(it)
-                    if (newFolderId != -1) {
-                        safeActivity.dbHelper.moveAlarmsToFolder(alarms.map { it.id }, newFolderId)
-                    }
-                    setupAlarms()
-                    updateAlarmHero()
-                }
-            }
-        )
     }
 
     private fun openEditAlarm(alarm: Alarm) {

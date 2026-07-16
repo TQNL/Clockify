@@ -179,6 +179,10 @@ class MainActivity : SimpleActivity() {
                     TAB_TIMER_INDEX -> getViewPagerAdapter()?.showTimerSortDialog()
                 }
 
+                R.id.create_folder -> {
+                    getViewPagerAdapter()?.showAlarmCreateFolderDialog()
+                }
+
                 R.id.more_apps_from_us -> launchMoreAppsFromUsIntent()
                 R.id.settings -> launchSettings()
                 R.id.about -> launchAbout()
@@ -192,6 +196,7 @@ class MainActivity : SimpleActivity() {
         binding.mainToolbar.menu.apply {
             findItem(R.id.sort).isVisible = binding.viewPager.currentItem == getTabIndex(TAB_ALARM)
                     || binding.viewPager.currentItem == getTabIndex(TAB_TIMER)
+            findItem(R.id.create_folder).isVisible = binding.viewPager.currentItem == getTabIndex(TAB_ALARM)
             findItem(R.id.more_apps_from_us).isVisible =
                 !resources.getBoolean(org.fossify.commons.R.bool.hide_google_relations)
         }
@@ -409,18 +414,6 @@ class MainActivity : SimpleActivity() {
         }
     }
 
-    fun openFolderFragment(folderId: Int, folderName: String) {
-        val fragment = FolderFragment.newInstance(folderId, folderName)
-        supportFragmentManager.beginTransaction()
-            .replace(android.R.id.content, fragment)
-            .addToBackStack("folder_$folderId")
-            .commit()
-    }
-
-    fun closeFolderFragment() {
-        supportFragmentManager.popBackStack()
-    }
-
     private fun getTabIndex(tabId: Int): Int {
         return when (tabId) {
             TAB_CLOCK -> TAB_CLOCK_INDEX
@@ -428,6 +421,37 @@ class MainActivity : SimpleActivity() {
             TAB_STOPWATCH -> TAB_STOPWATCH_INDEX
             TAB_TIMER -> TAB_TIMER_INDEX
             else -> config.lastUsedViewPagerPage
+        }
+    }
+
+    fun openFolderFragment(folderId: Int, folderName: String) {
+        binding.mainToolbar.title = folderName
+        binding.mainToolbar.setNavigationIcon(R.drawable.ic_chevron_left_vector)
+        binding.mainToolbar.setNavigationOnClickListener { closeFolderFragment() }
+        binding.mainTabsHolder.visibility = android.view.View.GONE
+        binding.mainHolder.visibility = android.view.View.GONE
+        binding.fragmentContainer.visibility = android.view.View.VISIBLE
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, FolderFragment(folderId, folderName))
+            .addToBackStack("folder")
+            .commit()
+    }
+
+    fun closeFolderFragment() {
+        binding.mainToolbar.title = getString(R.string.app_name)
+        binding.mainToolbar.navigationIcon = null
+        binding.mainToolbar.setNavigationOnClickListener(null)
+        binding.mainTabsHolder.visibility = android.view.View.VISIBLE
+        binding.mainHolder.visibility = android.view.View.VISIBLE
+        binding.fragmentContainer.visibility = android.view.View.GONE
+        supportFragmentManager.popBackStack("folder", androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
+    }
+
+    override fun onBackPressed() {
+        if (binding.fragmentContainer.visibility == android.view.View.VISIBLE) {
+            closeFolderFragment()
+        } else {
+            super.onBackPressed()
         }
     }
 }
