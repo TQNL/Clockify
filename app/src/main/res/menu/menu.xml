@@ -12,6 +12,11 @@
         android:title="@string/create_folder"
         app:showAsAction="always" />
     <item
+        android:id="@+id/add_alarm"
+        android:icon="@drawable/ic_plus_vector"
+        android:title="@string/add_alarm"
+        app:showAsAction="always" />
+    <item
         android:id="@+id/settings"
         android:icon="@drawable/ic_settings_cog_vector"
         android:title="@string/settings"

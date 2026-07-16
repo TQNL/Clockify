@@ -33,6 +33,7 @@ import org.fossify.clock.interfaces.ToggleAlarmInterface
 import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmEvent
 import org.fossify.clock.models.AlarmFolder
+import org.fossify.clock.models.FolderAlarmCounts
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperTextColor
@@ -47,16 +48,67 @@ import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
 
-class AlarmFragment : Fragment(), ToggleAlarmInterface {
+open class AlarmFragment : Fragment(), ToggleAlarmInterface {
     companion object {
         private const val HERO_REFRESH_INTERVAL = 60_000L // refresh every 60 seconds
+
+        // Bundle argument keys — used by FolderFragment subclass
+        protected const val ARG_FOLDER_ID = "folder_id"
+        protected const val ARG_FOLDER_NAME = "folder_name"
     }
 
-    private var items = ArrayList<Any>()
+    // Read from arguments; non-null only when this fragment is acting as a folder view.
+    protected val folderId: Int?
+        get() = arguments?.getInt(ARG_FOLDER_ID, -1)?.takeIf { it != -1 }
+    protected val folderName: String?
+        get() = arguments?.getString(ARG_FOLDER_NAME)
+
+    protected var items = ArrayList<Any>()
     private var currentEditAlarmDialog: EditAlarmDialog? = null
 
     private lateinit var binding: FragmentAlarmBinding
     private val heroRefreshHandler = Handler(Looper.getMainLooper())
+
+    // -----------------------------------------------------------------
+    // Subclass extension points — override in FolderFragment
+    // -----------------------------------------------------------------
+
+    /** Whether this instance is showing alarms inside a folder. */
+    protected open fun isFolderView(): Boolean = folderId != null
+
+    /**
+     * Load the items (alarms and optionally folders) to display.
+     * Default: mixed list of folders + sorted uncategorized alarms (main tab).
+     * Override in [FolderFragment] to load only alarms belonging to a folder.
+     */
+    protected open fun loadAlarmItems(
+        callback: (items: ArrayList<Any>, folders: List<AlarmFolder>, folderCounts: Map<Int, FolderAlarmCounts>) -> Unit
+    ) {
+        getSortedAlarms(callback)
+    }
+
+    /**
+     * Build a new Alarm for the FAB "+" button.
+     * Override in [FolderFragment] to auto-assign [Alarm.folderId].
+     */
+    protected open fun createFabAlarm(): Alarm {
+        val newAlarm = requireContext().createNewAlarm(DEFAULT_ALARM_MINUTES, 0)
+        newAlarm.isEnabled = true
+        newAlarm.days = getTomorrowBit()
+        return newAlarm
+    }
+
+    /** Handle a click on an item in the alarm list (alarm or folder). */
+    protected open fun onAlarmItemClick(item: Any) {
+        when (item) {
+            is Alarm -> openEditAlarm(item)
+            is AlarmFolder -> (activity as? MainActivity)?.openFolderFragment(item.id, item.name)
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // Fragment lifecycle
+    // -----------------------------------------------------------------
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -89,6 +141,10 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
         heroRefreshHandler.removeCallbacksAndMessages(null)
     }
 
+    // -----------------------------------------------------------------
+    // Toolbar actions (main tab only)
+    // -----------------------------------------------------------------
+
     fun showSortingDialog() {
         ChangeAlarmSortDialog(activity as SimpleActivity) {
             setupAlarms()
@@ -96,28 +152,33 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
     }
 
     fun showCreateFolderDialog() {
+        if (isFolderView()) return
         CreateFolderDialog(activity as SimpleActivity) { name ->
             activity?.dbHelper?.insertFolder(name)
             setupAlarms()
         }
     }
 
+    /** Public entry point for the toolbar "+" button. */
+    fun addAlarm() {
+        openEditAlarm(createFabAlarm())
+    }
+
+    // -----------------------------------------------------------------
+    // View setup
+    // -----------------------------------------------------------------
+
     private fun setupViews() {
         binding.apply {
             requireContext().updateTextColors(alarmFragment)
-            alarmFab.setOnClickListener {
-                val newAlarm = root.context.createNewAlarm(DEFAULT_ALARM_MINUTES, 0)
-                newAlarm.isEnabled = true
-                newAlarm.days = getTomorrowBit()
-                openEditAlarm(newAlarm)
-            }
+            alarmFab.visibility = View.GONE
         }
 
         setupAlarms()
         updateAlarmHero()
     }
 
-    // --- Samsung-style Alarm Hero ---
+    // --- Samsung-style Alarm Hero (main tab only) ---
 
     private fun startHeroRefresh() {
         heroRefreshHandler.removeCallbacksAndMessages(null)
@@ -131,7 +192,7 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
 
     private fun updateAlarmHero() {
         val safeContext = context ?: return
-        safeContext.getAlarmHeroInfo { heroInfo ->
+        safeContext.getAlarmHeroInfo(folderId = folderId) { heroInfo ->
             val hasAlarm = heroInfo.countdownText.isNotEmpty()
 
             binding.apply {
@@ -150,9 +211,9 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
         }
     }
 
-    // --- Alarm list ---
+    // --- Alarm list (main tab: folders + uncategorized alarms) ---
 
-    private fun getSortedAlarms(callback: (items: ArrayList<Any>, folders: List<AlarmFolder>, folderCounts: Map<Int, Int>) -> Unit) {
+    private fun getSortedAlarms(callback: (items: ArrayList<Any>, folders: List<AlarmFolder>, folderCounts: Map<Int, FolderAlarmCounts>) -> Unit) {
         val safeContext = context ?: return
         ensureBackgroundThread {
             val allAlarms = context?.dbHelper?.getAlarms() ?: return@ensureBackgroundThread
@@ -160,7 +221,11 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
             val uncategorizedAlarms = allAlarms.filter { it.folderId == null }
 
             val folderCounts = folders.associate { folder ->
-                folder.id to allAlarms.count { it.folderId == folder.id }
+                val folderAlarms = allAlarms.filter { it.folderId == folder.id }
+                folder.id to FolderAlarmCounts(
+                    enabled = folderAlarms.count { it.isEnabled },
+                    disabled = folderAlarms.count { !it.isEnabled },
+                )
             }
 
             val sorted = when (safeContext.config.alarmSort) {
@@ -198,24 +263,21 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
         }
     }
 
+    // --- Shared adapter wiring (used by both main tab and folder view) ---
+
     private fun setupAlarms() {
-        getSortedAlarms { mixed, folders, folderCounts ->
-            items = ArrayList(mixed)
-            val safeActivity = activity as? SimpleActivity ?: return@getSortedAlarms
+        loadAlarmItems { loadedItems, folders, folderCounts ->
+            items = ArrayList(loadedItems)
+            val safeActivity = activity as? SimpleActivity ?: return@loadAlarmItems
 
             var currAdapter = binding.alarmsList.adapter as? AlarmsAdapter
             if (currAdapter == null) {
                 currAdapter = AlarmsAdapter(
                     activity = safeActivity,
-                    items = mixed,
+                    items = loadedItems,
                     toggleAlarmInterface = this,
                     recyclerView = binding.alarmsList,
-                    itemClick = { clicked ->
-                        when (clicked) {
-                            is Alarm -> openEditAlarm(clicked)
-                            is AlarmFolder -> (activity as? MainActivity)?.openFolderFragment(clicked.id, clicked.name)
-                        }
-                    },
+                    itemClick = { clicked -> onAlarmItemClick(clicked) },
                     folderClick = { folder ->
                         (activity as? MainActivity)?.openFolderFragment(folder.id, folder.name)
                     },
@@ -228,7 +290,7 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
                     updatePrimaryColor()
                     updateBackgroundColor(safeActivity.getProperBackgroundColor())
                     updateTextColor(safeActivity.getProperTextColor())
-                    updateItems(mixed)
+                    updateItems(loadedItems)
                 }
             }
 
@@ -237,7 +299,9 @@ class AlarmFragment : Fragment(), ToggleAlarmInterface {
         }
     }
 
-    private fun openEditAlarm(alarm: Alarm) {
+    // --- Edit / Toggle / Reschedule ---
+
+    protected fun openEditAlarm(alarm: Alarm) {
         currentEditAlarmDialog = EditAlarmDialog(activity as SimpleActivity, alarm) {
             alarm.id = it
             currentEditAlarmDialog = null

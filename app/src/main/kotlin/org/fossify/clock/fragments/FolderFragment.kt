@@ -1,132 +1,84 @@
 package org.fossify.clock.fragments
 
 import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import androidx.fragment.app.Fragment
-import org.fossify.clock.R
-import org.fossify.clock.activities.SimpleActivity
-import org.fossify.clock.adapters.AlarmsAdapter
-import org.fossify.clock.databinding.FragmentFolderBinding
-import org.fossify.clock.dialogs.EditAlarmDialog
 import org.fossify.clock.extensions.config
-import org.fossify.clock.extensions.createNewAlarm
 import org.fossify.clock.extensions.dbHelper
-import org.fossify.clock.extensions.getFormattedTime
-import org.fossify.clock.helpers.DEFAULT_ALARM_MINUTES
-import org.fossify.clock.helpers.UPCOMING_ALARM_NOTIFICATION_BASE
-import org.fossify.clock.helpers.getTomorrowBit
-import org.fossify.clock.interfaces.ToggleAlarmInterface
+import org.fossify.clock.extensions.firstDayOrder
+import org.fossify.clock.helpers.SORT_BY_ALARM_TIME
+import org.fossify.clock.helpers.SORT_BY_DATE_AND_TIME
 import org.fossify.clock.models.Alarm
-import org.fossify.clock.models.AlarmEvent
-import org.fossify.commons.extensions.beVisibleIf
-import org.fossify.commons.extensions.getProperBackgroundColor
-import org.fossify.commons.extensions.getProperTextColor
-import org.fossify.commons.extensions.notificationManager
-import org.fossify.commons.extensions.updateTextColors
-import org.greenrobot.eventbus.EventBus
-import org.greenrobot.eventbus.Subscribe
-import org.greenrobot.eventbus.ThreadMode
+import org.fossify.clock.models.AlarmFolder
+import org.fossify.clock.models.FolderAlarmCounts
+import org.fossify.commons.helpers.SORT_BY_CUSTOM
+import org.fossify.commons.helpers.SORT_BY_DATE_CREATED
 
-class FolderFragment(
-    private val folderId: Int,
-    private val folderName: String,
-) : Fragment(), ToggleAlarmInterface {
+/**
+ * Thin subclass of [AlarmFragment] that shows alarms inside a single folder.
+ *
+ * Overrides only three extension points — data source, FAB alarm creation,
+ * and item-click routing. All other behaviour (adapter wiring, edit dialog,
+ * toggle/schedule logic, EventBus refresh) is inherited from [AlarmFragment].
+ *
+ * The alarm hero is automatically hidden because [AlarmFragment.isFolderView]
+ * returns true, and both [AlarmFragment.updateAlarmHero] and
+ * [AlarmFragment.startHeroRefresh] check this before running.
+ */
+class FolderFragment : AlarmFragment {
 
-    private lateinit var binding: FragmentFolderBinding
+    constructor() : super()  // Required for Fragment instantiation
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        EventBus.getDefault().register(this)
-    }
-
-    override fun onDestroy() {
-        EventBus.getDefault().unregister(this)
-        super.onDestroy()
-    }
-
-    override fun onCreateView(
-        inflater: LayoutInflater,
-        container: ViewGroup?,
-        savedInstanceState: Bundle?,
-    ): View {
-        binding = FragmentFolderBinding.inflate(inflater, container, false)
-        return binding.root
-    }
-
-    override fun onResume() {
-        super.onResume()
-        setupViews()
-    }
-
-    fun getFolderId() = folderId
-
-    fun getFolderName() = folderName
-
-    private fun setupViews() {
-        binding.apply {
-            requireContext().updateTextColors(folderFragment)
-            folderFab.setOnClickListener {
-                val newAlarm = root.context.createNewAlarm(DEFAULT_ALARM_MINUTES, 0)
-                newAlarm.isEnabled = true
-                newAlarm.days = getTomorrowBit()
-                newAlarm.folderId = folderId
-                openEditAlarm(newAlarm)
+    companion object {
+        fun newInstance(folderId: Int, folderName: String): FolderFragment {
+            return FolderFragment().apply {
+                arguments = Bundle().apply {
+                    putInt(ARG_FOLDER_ID, folderId)
+                    putString(ARG_FOLDER_NAME, folderName)
+                }
             }
         }
-        setupAlarms()
     }
 
-    private fun setupAlarms() {
+    // -- extension-point overrides ---------------------------------------------
+
+    override fun isFolderView(): Boolean = true
+
+    override fun loadAlarmItems(
+        callback: (items: ArrayList<Any>, folders: List<AlarmFolder>, folderCounts: Map<Int, FolderAlarmCounts>) -> Unit
+    ) {
         val safeContext = context ?: return
-        val folderAlarms = safeContext.dbHelper.getAlarmsInFolder(folderId)
-
-        binding.apply {
-            val currAdapter = folderAlarmsList.adapter as? AlarmsAdapter
-            if (currAdapter == null) {
-                val adapter = AlarmsAdapter(
-                    activity = safeContext as SimpleActivity,
-                    items = ArrayList(folderAlarms),
-                    toggleAlarmInterface = this@FolderFragment,
-                    recyclerView = folderAlarmsList,
-                    itemClick = { clicked ->
-                        if (clicked is Alarm) openEditAlarm(clicked)
-                    },
-                    folderClick = {},
-                    folderAlarmCounts = emptyMap(),
-                )
-                folderAlarmsList.adapter = adapter
-            } else {
-                currAdapter.updateItems(ArrayList(folderAlarms))
+        val folderAlarms = safeContext.dbHelper.getAlarmsInFolder(folderId ?: return)
+        val sorted = when (safeContext.config.alarmSort) {
+            SORT_BY_ALARM_TIME -> folderAlarms.sortedBy { it.timeInMinutes }
+            SORT_BY_DATE_CREATED -> folderAlarms.sortedBy { it.id }
+            SORT_BY_DATE_AND_TIME -> folderAlarms.sortedWith(compareBy<Alarm> {
+                safeContext.firstDayOrder(it.days)
+            }.thenBy {
+                it.timeInMinutes
+            })
+            SORT_BY_CUSTOM -> {
+                val customOrder = safeContext.config.alarmsCustomSorting
+                if (customOrder.isNullOrEmpty()) {
+                    folderAlarms.sortedBy { it.id }
+                } else {
+                    val orderIds = customOrder.split(", ").mapNotNull { it.toIntOrNull() }
+                    val idMap = folderAlarms.associateBy { it.id }
+                    val ordered = orderIds.mapNotNull { idMap[it] }
+                    ordered + folderAlarms.filter { it !in ordered }
+                }
             }
-
-            folderPlaceholder.beVisibleIf(folderAlarms.isEmpty())
+            else -> folderAlarms
         }
+        callback(ArrayList(sorted), emptyList(), emptyMap())
     }
 
-    private fun openEditAlarm(alarm: Alarm) {
-        val activity = activity as? SimpleActivity ?: return
-        EditAlarmDialog(activity, alarm) {
-            alarm.id = it
-            requireContext().notificationManager.cancel(UPCOMING_ALARM_NOTIFICATION_BASE + alarm.id)
-            setupAlarms()
-            EventBus.getDefault().post(AlarmEvent.Refresh)
-        }
+    override fun createFabAlarm(): Alarm {
+        val alarm = super.createFabAlarm()
+        folderId?.let { alarm.folderId = it }
+        return alarm
     }
 
-    override fun alarmToggled(id: Int, isEnabled: Boolean) {
-        val safeContext = context ?: return
-        if (safeContext.dbHelper.updateAlarmEnabledState(id, isEnabled)) {
-            if (!isEnabled) {
-                safeContext.notificationManager.cancel(UPCOMING_ALARM_NOTIFICATION_BASE + id)
-            }
-            setupAlarms()
-        }
-    }
-
-    @Subscribe(threadMode = ThreadMode.MAIN)
-    fun onMessageEvent(@Suppress("unused") event: AlarmEvent.Refresh) {
-        setupAlarms()
+    override fun onAlarmItemClick(item: Any) {
+        // Inside a folder, the list contains only Alarms — no folder navigation.
+        if (item is Alarm) openEditAlarm(item)
     }
 }

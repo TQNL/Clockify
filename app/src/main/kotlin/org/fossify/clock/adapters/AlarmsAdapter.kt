@@ -20,6 +20,7 @@ import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmEvent
 import org.fossify.clock.models.AlarmFolder
 import org.fossify.commons.adapters.MyRecyclerViewAdapter
+import org.fossify.clock.models.FolderAlarmCounts
 import org.fossify.commons.dialogs.ConfirmationDialog
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.beVisibleIf
@@ -39,7 +40,7 @@ class AlarmsAdapter(
     recyclerView: MyRecyclerView,
     itemClick: (Any) -> Unit,
     private val folderClick: (AlarmFolder) -> Unit,
-    private val folderAlarmCounts: Map<Int, Int>,
+    private val folderAlarmCounts: Map<Int, FolderAlarmCounts>,
 ) : MyRecyclerViewAdapter(activity, recyclerView, itemClick), ItemTouchHelperContract {
 
     companion object {
@@ -168,8 +169,12 @@ class AlarmsAdapter(
     private fun setupFolderView(view: View, folder: AlarmFolder) {
         ItemFolderBinding.bind(view).apply {
             folderName.text = folder.name
-            val count = folderAlarmCounts[folder.id] ?: 0
-            folderCount.text = count.toString()
+            val counts = folderAlarmCounts[folder.id]
+            folderCount.text = if (counts != null) {
+                "${counts.enabled} on · ${counts.disabled} off"
+            } else {
+                "0"
+            }
             folderHolder.setOnClickListener { folderClick(folder) }
         }
     }

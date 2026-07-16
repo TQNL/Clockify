@@ -69,6 +69,10 @@ class ViewPagerAdapter(fm: FragmentManager) : FragmentStatePagerAdapter(fm) {
         (fragments[TAB_ALARM_INDEX] as? AlarmFragment)?.showCreateFolderDialog()
     }
 
+    fun showAlarmAddDialog() {
+        (fragments[TAB_ALARM_INDEX] as? AlarmFragment)?.addAlarm()
+    }
+
     fun startStopWatch() {
         (fragments[TAB_STOPWATCH_INDEX] as? StopwatchFragment)?.startStopWatch()
     }

@@ -607,9 +607,14 @@ data class AlarmHeroInfo(
     val closestAlarmCalendar: Calendar?,
 )
 
-fun Context.getAlarmHeroInfo(callback: (AlarmHeroInfo) -> Unit) {
+fun Context.getAlarmHeroInfo(folderId: Int? = null, callback: (AlarmHeroInfo) -> Unit) {
     getEnabledAlarms { enabledAlarms ->
-        if (enabledAlarms.isNullOrEmpty()) {
+        val alarms = if (folderId != null) {
+            enabledAlarms?.filter { it.folderId == folderId }
+        } else {
+            enabledAlarms
+        }
+        if (alarms.isNullOrEmpty()) {
             callback(AlarmHeroInfo("", "", null))
             return@getEnabledAlarms
         }
@@ -617,7 +622,7 @@ fun Context.getAlarmHeroInfo(callback: (AlarmHeroInfo) -> Unit) {
         val now = Calendar.getInstance()
 
         // Calculate next alarm from our enabled-alarm data
-        val nextAlarmList = enabledAlarms
+        val nextAlarmList = alarms
             .mapNotNull(::getTimeOfNextAlarm)
             .filter { it > now }
 

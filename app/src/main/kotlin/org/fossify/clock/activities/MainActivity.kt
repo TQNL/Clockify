@@ -174,13 +174,28 @@ class MainActivity : SimpleActivity() {
     private fun setupOptionsMenu() {
         binding.mainToolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
-                R.id.sort -> when (binding.viewPager.currentItem) {
-                    TAB_ALARM_INDEX -> getViewPagerAdapter()?.showAlarmSortDialog()
-                    TAB_TIMER_INDEX -> getViewPagerAdapter()?.showTimerSortDialog()
+                R.id.sort -> {
+                    if (binding.fragmentContainer.visibility == android.view.View.VISIBLE) {
+                        (supportFragmentManager.findFragmentById(R.id.fragment_container) as? AlarmFragment)
+                            ?.showSortingDialog()
+                    } else when (binding.viewPager.currentItem) {
+                        TAB_ALARM_INDEX -> getViewPagerAdapter()?.showAlarmSortDialog()
+                        TAB_TIMER_INDEX -> getViewPagerAdapter()?.showTimerSortDialog()
+                    }
                 }
 
                 R.id.create_folder -> {
                     getViewPagerAdapter()?.showAlarmCreateFolderDialog()
+                }
+
+                R.id.add_alarm -> {
+                    if (binding.fragmentContainer.visibility == android.view.View.VISIBLE) {
+                        // Folder view — find the FolderFragment in the container
+                        (supportFragmentManager.findFragmentById(R.id.fragment_container) as? AlarmFragment)
+                            ?.addAlarm()
+                    } else {
+                        getViewPagerAdapter()?.showAlarmAddDialog()
+                    }
                 }
 
                 R.id.more_apps_from_us -> launchMoreAppsFromUsIntent()
@@ -194,9 +209,12 @@ class MainActivity : SimpleActivity() {
 
     private fun refreshMenuItems() {
         binding.mainToolbar.menu.apply {
-            findItem(R.id.sort).isVisible = binding.viewPager.currentItem == getTabIndex(TAB_ALARM)
-                    || binding.viewPager.currentItem == getTabIndex(TAB_TIMER)
-            findItem(R.id.create_folder).isVisible = binding.viewPager.currentItem == getTabIndex(TAB_ALARM)
+            val isAlarmTab = binding.viewPager.currentItem == getTabIndex(TAB_ALARM)
+            val isFolderView = binding.fragmentContainer.visibility == android.view.View.VISIBLE
+            findItem(R.id.sort).isVisible = isAlarmTab || isFolderView
+                || binding.viewPager.currentItem == getTabIndex(TAB_TIMER)
+            findItem(R.id.create_folder).isVisible = isAlarmTab && !isFolderView
+            findItem(R.id.add_alarm).isVisible = isAlarmTab || isFolderView
             findItem(R.id.more_apps_from_us).isVisible =
                 !resources.getBoolean(org.fossify.commons.R.bool.hide_google_relations)
         }
@@ -432,9 +450,10 @@ class MainActivity : SimpleActivity() {
         binding.mainHolder.visibility = android.view.View.GONE
         binding.fragmentContainer.visibility = android.view.View.VISIBLE
         supportFragmentManager.beginTransaction()
-            .replace(R.id.fragment_container, FolderFragment(folderId, folderName))
+            .replace(R.id.fragment_container, FolderFragment.newInstance(folderId, folderName))
             .addToBackStack("folder")
             .commit()
+        refreshMenuItems()
     }
 
     fun closeFolderFragment() {
@@ -445,6 +464,7 @@ class MainActivity : SimpleActivity() {
         binding.mainHolder.visibility = android.view.View.VISIBLE
         binding.fragmentContainer.visibility = android.view.View.GONE
         supportFragmentManager.popBackStack("folder", androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
+        refreshMenuItems()
     }
 
     override fun onBackPressed() {
