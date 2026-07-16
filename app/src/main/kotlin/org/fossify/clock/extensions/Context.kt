@@ -631,14 +631,19 @@ fun Context.getAlarmHeroInfo(folderId: Int? = null, callback: (AlarmHeroInfo) ->
         // Check the system alarm clock for snoozes — when an alarm is snoozed,
         // AlarmController.snoozeAlarm() calls setupAlarmClock() which re-registers
         // the system alarm clock with the snoozed trigger time.
-        val systemAlarmClock = alarmManager.nextAlarmClock
-        if (systemAlarmClock != null) {
-            val systemTrigger = Calendar.getInstance().apply {
-                timeInMillis = systemAlarmClock.triggerTime
-            }
-            if (systemTrigger > now) {
-                if (closestAlarmTime == null || systemTrigger < closestAlarmTime) {
-                    closestAlarmTime = systemTrigger
+        // Only do this for the global (unscoped) hero — in folder scope, the
+        // system alarm clock may belong to an alarm outside this folder and
+        // would pollute the folder-specific hero with an unrelated alarm.
+        if (folderId == null) {
+            val systemAlarmClock = alarmManager.nextAlarmClock
+            if (systemAlarmClock != null) {
+                val systemTrigger = Calendar.getInstance().apply {
+                    timeInMillis = systemAlarmClock.triggerTime
+                }
+                if (systemTrigger > now) {
+                    if (closestAlarmTime == null || systemTrigger < closestAlarmTime) {
+                        closestAlarmTime = systemTrigger
+                    }
                 }
             }
         }

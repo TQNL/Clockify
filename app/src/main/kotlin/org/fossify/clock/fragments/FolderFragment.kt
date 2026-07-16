@@ -15,13 +15,15 @@ import org.fossify.commons.helpers.SORT_BY_DATE_CREATED
 /**
  * Thin subclass of [AlarmFragment] that shows alarms inside a single folder.
  *
- * Overrides only three extension points — data source, FAB alarm creation,
- * and item-click routing. All other behaviour (adapter wiring, edit dialog,
- * toggle/schedule logic, EventBus refresh) is inherited from [AlarmFragment].
+ * Overrides four extension points — data source, FAB alarm creation,
+ * item-click routing, and view-mode detection. All other behaviour
+ * (adapter wiring, edit dialog, toggle/schedule logic, EventBus refresh,
+ * folder-scoped hero countdown) is inherited from [AlarmFragment].
  *
- * The alarm hero is automatically hidden because [AlarmFragment.isFolderView]
- * returns true, and both [AlarmFragment.updateAlarmHero] and
- * [AlarmFragment.startHeroRefresh] check this before running.
+ * [AlarmFragment.updateAlarmHero] passes [AlarmFragment.folderId] to
+ * [org.fossify.clock.extensions.getAlarmHeroInfo], which filters to only
+ * this folder's enabled alarms and skips the global system alarm clock
+ * (avoiding cross-folder snooze pollution).
  */
 class FolderFragment : AlarmFragment {
 
