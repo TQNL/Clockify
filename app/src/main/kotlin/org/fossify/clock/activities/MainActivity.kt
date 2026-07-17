@@ -7,6 +7,8 @@ import android.graphics.drawable.Icon
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.addCallback
 import androidx.core.graphics.drawable.toDrawable
 import me.grantland.widget.AutofitHelper
 import org.fossify.clock.BuildConfig
@@ -64,11 +66,15 @@ class MainActivity : SimpleActivity() {
     private var storedTextColor = 0
     private var storedBackgroundColor = 0
     private var storedPrimaryColor = 0
+    private lateinit var folderBackCallback: OnBackPressedCallback
     private val binding: ActivityMainBinding by viewBinding(ActivityMainBinding::inflate)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
+        folderBackCallback = onBackPressedDispatcher.addCallback(this, false) {
+            closeFolderFragment()
+        }
         appLaunched(BuildConfig.APPLICATION_ID)
         setupOptionsMenu()
         refreshMenuItems()
@@ -78,6 +84,7 @@ class MainActivity : SimpleActivity() {
         storeStateVariables()
         initFragments()
         setupTabs()
+        restoreFolderView()
         updateWidgets()
         migrateFirstDayOfWeek()
         ensureBackgroundThread {
@@ -443,35 +450,48 @@ class MainActivity : SimpleActivity() {
     }
 
     fun openFolderFragment(folderId: Int, folderName: String) {
+        if (binding.fragmentContainer.visibility == android.view.View.VISIBLE) return
+
+        showFolderView(folderName)
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, FolderFragment.newInstance(folderId, folderName))
+            .addToBackStack("folder")
+            .commit()
+        // Make the folder transaction visible to an immediate system-back press.
+        supportFragmentManager.executePendingTransactions()
+    }
+
+    private fun restoreFolderView() {
+        val folderFragment = supportFragmentManager
+            .findFragmentById(R.id.fragment_container) as? FolderFragment ?: return
+        showFolderView(folderFragment.displayName)
+    }
+
+    private fun showFolderView(folderName: String) {
         binding.mainToolbar.title = folderName
         binding.mainToolbar.setNavigationIcon(R.drawable.ic_chevron_left_vector)
         binding.mainToolbar.setNavigationOnClickListener { closeFolderFragment() }
         binding.mainTabsHolder.visibility = android.view.View.GONE
         binding.mainHolder.visibility = android.view.View.GONE
         binding.fragmentContainer.visibility = android.view.View.VISIBLE
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.fragment_container, FolderFragment.newInstance(folderId, folderName))
-            .addToBackStack("folder")
-            .commit()
+        folderBackCallback.isEnabled = true
         refreshMenuItems()
     }
 
     fun closeFolderFragment() {
+        if (binding.fragmentContainer.visibility != android.view.View.VISIBLE) return
+
+        folderBackCallback.isEnabled = false
         binding.mainToolbar.title = getString(R.string.app_name)
         binding.mainToolbar.navigationIcon = null
         binding.mainToolbar.setNavigationOnClickListener(null)
         binding.mainTabsHolder.visibility = android.view.View.VISIBLE
         binding.mainHolder.visibility = android.view.View.VISIBLE
         binding.fragmentContainer.visibility = android.view.View.GONE
-        supportFragmentManager.popBackStack("folder", androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE)
+        supportFragmentManager.popBackStackImmediate(
+            "folder",
+            androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE
+        )
         refreshMenuItems()
-    }
-
-    override fun onBackPressed() {
-        if (binding.fragmentContainer.visibility == android.view.View.VISIBLE) {
-            closeFolderFragment()
-        } else {
-            super.onBackPressed()
-        }
     }
 }

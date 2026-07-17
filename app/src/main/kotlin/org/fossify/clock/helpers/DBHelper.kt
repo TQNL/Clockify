@@ -81,6 +81,11 @@ class DBHelper private constructor(
             } catch (_: Exception) {
                 // Column may already exist from previous folder infrastructure
             }
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS $FOLDERS_TABLE_NAME " +
+                    "($COL_ID INTEGER PRIMARY KEY AUTOINCREMENT, $COL_NAME TEXT NOT NULL, " +
+                    "$COL_CREATED_AT INTEGER NOT NULL)"
+            )
         }
     }
 
@@ -248,6 +253,10 @@ class DBHelper private constructor(
     }
 
     fun deleteFolder(folderId: Int) {
+        val values = ContentValues().apply {
+            putNull(COL_FOLDER_ID)
+        }
+        mDb.update(ALARMS_TABLE_NAME, values, "$COL_FOLDER_ID = ?", arrayOf(folderId.toString()))
         mDb.delete(FOLDERS_TABLE_NAME, "$COL_ID = ?", arrayOf(folderId.toString()))
     }
 

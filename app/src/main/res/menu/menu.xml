@@ -2,14 +2,14 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
-        android:id="@+id/sort"
-        android:icon="@drawable/ic_sort_vector"
-        android:title="@string/sort_by"
-        app:showAsAction="ifRoom" />
-    <item
         android:id="@+id/create_folder"
         android:icon="@drawable/ic_create_folder_vector"
         android:title="@string/create_folder"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/sort"
+        android:icon="@drawable/ic_sort_vector"
+        android:title="@string/sort_by"
         app:showAsAction="always" />
     <item
         android:id="@+id/add_alarm"

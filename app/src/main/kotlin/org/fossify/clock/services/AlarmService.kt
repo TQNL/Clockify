@@ -30,7 +30,6 @@ import kotlin.time.Duration.Companion.seconds
 class AlarmService : Service() {
 
     companion object {
-        private const val DEFAULT_ALARM_VOLUME = 7
         private const val INCREASE_VOLUME_DELAY = 300L
         private const val MIN_ALARM_VOLUME_FOR_INCREASING_ALARMS = 1
         private const val VIBRATION_PATTERN_TIMING = 500L
@@ -41,7 +40,7 @@ class AlarmService : Service() {
     }
 
     private var activeAlarm: Alarm? = null
-    private var initialAlarmVolume = DEFAULT_ALARM_VOLUME
+    private var initialAlarmVolume: Int? = null
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
 
@@ -121,21 +120,28 @@ class AlarmService : Service() {
                     setDataSource(this@AlarmService, alarm.soundUri.toUri())
                     isLooping = true
                     prepare()
-                    start()
                 }
 
                 if (config.increaseVolumeGradually) {
-                    initialAlarmVolume = audioManager.getStreamVolume(STREAM_ALARM)
+                    val targetVolume = audioManager.getStreamVolume(STREAM_ALARM)
+                    val startVolume = MIN_ALARM_VOLUME_FOR_INCREASING_ALARMS
+                        .coerceAtMost(targetVolume)
+                    initialAlarmVolume = targetVolume
+                    audioManager.setStreamVolume(STREAM_ALARM, startVolume, 0)
+                    mediaPlayer?.start()
                     scheduleVolumeIncrease(
-                        lastVolume = MIN_ALARM_VOLUME_FOR_INCREASING_ALARMS.toFloat(),
-                        maxVolume = initialAlarmVolume.toFloat(),
-                        delay = 0
+                        lastVolume = startVolume.toFloat(),
+                        maxVolume = targetVolume.toFloat(),
+                        delay = INCREASE_VOLUME_DELAY
                     )
+                } else {
+                    mediaPlayer?.start()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 mediaPlayer?.release()
                 mediaPlayer = null
+                resetVolumeToInitialValue()
             }
         }
 
@@ -161,11 +167,10 @@ class AlarmService : Service() {
     }
 
     private fun resetVolumeToInitialValue() {
-        if (config.increaseVolumeGradually && initialAlarmVolume != DEFAULT_ALARM_VOLUME) {
-            audioManager.setStreamVolume(STREAM_ALARM, initialAlarmVolume, 0)
+        initialAlarmVolume?.let { volume ->
+            audioManager.setStreamVolume(STREAM_ALARM, volume, 0)
         }
-
-        initialAlarmVolume = DEFAULT_ALARM_VOLUME
+        initialAlarmVolume = null
     }
 
     private fun startAutoDismiss(durationSecs: Int) {

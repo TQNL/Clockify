@@ -243,7 +243,7 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface {
                         uncategorizedAlarms.sortedBy { it.id }
                     } else {
                         val customAlarmsSortOrder: List<Int> =
-                            customAlarmsSortOrderString.split(", ").map { it.toInt() }
+                            customAlarmsSortOrderString.split(", ").mapNotNull { it.toIntOrNull() }
                         val alarmsIdValueMap = uncategorizedAlarms.associateBy { it.id }
                         val sorted = customAlarmsSortOrder.mapNotNull { alarmsIdValueMap[it] }
                         sorted + uncategorizedAlarms.filter { it !in sorted }
@@ -291,7 +291,7 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface {
                     updatePrimaryColor()
                     updateBackgroundColor(safeActivity.getProperBackgroundColor())
                     updateTextColor(safeActivity.getProperTextColor())
-                    updateItems(loadedItems)
+                    updateItems(loadedItems, folderCounts)
                 }
             }
 

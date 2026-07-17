@@ -40,7 +40,7 @@ class AlarmsAdapter(
     recyclerView: MyRecyclerView,
     itemClick: (Any) -> Unit,
     private val folderClick: (AlarmFolder) -> Unit,
-    private val folderAlarmCounts: Map<Int, FolderAlarmCounts>,
+    private var folderAlarmCounts: Map<Int, FolderAlarmCounts>,
     /** Non-null when this adapter is inside a folder view — routes manual ordering to a per-folder config key. */
     private val folderId: Int? = null,
 ) : MyRecyclerViewAdapter(activity, recyclerView, itemClick), ItemTouchHelperContract {
@@ -143,8 +143,12 @@ class AlarmsAdapter(
     override fun getItemCount() = items.size
 
     @SuppressLint("NotifyDataSetChanged")
-    fun updateItems(newItems: ArrayList<Any>) {
+    fun updateItems(
+        newItems: ArrayList<Any>,
+        newFolderAlarmCounts: Map<Int, FolderAlarmCounts> = folderAlarmCounts,
+    ) {
         items = newItems
+        folderAlarmCounts = newFolderAlarmCounts
         notifyDataSetChanged()
         finishActMode()
     }

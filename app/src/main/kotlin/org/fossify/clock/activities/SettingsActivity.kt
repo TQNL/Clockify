@@ -249,6 +249,7 @@ class SettingsActivity : SimpleActivity() {
             ) {
                 config.upcomingAlarmAdvanceMinutes =
                     if (it != 0) it / MINUTE_SECONDS else DEFAULT_UPCOMING_ALARM_ADVANCE_MINUTES
+                ensureBackgroundThread { alarmController.rescheduleEnabledAlarms() }
                 updateUpcomingAlarmAdvanceText()
             }
         }

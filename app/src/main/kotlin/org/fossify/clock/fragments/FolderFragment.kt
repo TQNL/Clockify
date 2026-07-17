@@ -40,6 +40,9 @@ class FolderFragment : AlarmFragment {
         }
     }
 
+    val displayName: String
+        get() = folderName.orEmpty()
+
     // -- extension-point overrides ---------------------------------------------
 
     override fun isFolderView(): Boolean = true
