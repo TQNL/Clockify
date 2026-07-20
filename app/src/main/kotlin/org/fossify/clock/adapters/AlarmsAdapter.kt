@@ -1,6 +1,8 @@
 package org.fossify.clock.adapters
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.view.Menu
 import android.view.MotionEvent
 import android.view.View
@@ -19,6 +21,8 @@ import org.fossify.clock.interfaces.ToggleAlarmInterface
 import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmEvent
 import org.fossify.clock.models.AlarmFolder
+import org.fossify.clock.models.SelectionState
+import org.fossify.clock.models.SelectionType
 import org.fossify.commons.adapters.MyRecyclerViewAdapter
 import org.fossify.clock.models.FolderAlarmCounts
 import org.fossify.commons.dialogs.ConfirmationDialog
@@ -43,14 +47,31 @@ class AlarmsAdapter(
     private var folderAlarmCounts: Map<Int, FolderAlarmCounts>,
     /** Non-null when this adapter is inside a folder view — routes manual ordering to a per-folder config key. */
     private val folderId: Int? = null,
+    /** Callback when selection state changes (custom Samsung-style selection). */
+    private val onSelectionChanged: ((SelectionState) -> Unit)? = null,
+    /** Callback when delete is triggered from selection mode. */
+    private val onDeleteSelected: (() -> Unit)? = null,
+    /** Called when item long-pressed to enter selection mode. */
+    private val onItemLongPressed: ((Any, Int) -> Unit)? = null,
 ) : MyRecyclerViewAdapter(activity, recyclerView, itemClick), ItemTouchHelperContract {
 
     companion object {
         private const val TYPE_ALARM = 0
         private const val TYPE_FOLDER = 1
+
+        /**
+         * Selection key offset to avoid collision between folder IDs and alarm IDs.
+         * Folders get key = -(folderId + OFFSET), alarms use their id directly.
+         */
+        const val FOLDER_KEY_OFFSET = 1000000
     }
 
     private var startReorderDragListener: StartReorderDragListener
+    private var isCustomSelectionMode = false
+
+    /** Track selected keys when the base class CAB clears them during dismiss. */
+    private val savedSelectedKeys = HashSet<Int>()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         setupDragListener(true)
@@ -64,13 +85,16 @@ class AlarmsAdapter(
         }
     }
 
+    // Suppress CAB — we handle selection ourselves.
     override fun getActionMenuId() = R.menu.cab_alarms
 
     override fun prepareActionMode(menu: Menu) {}
 
     override fun actionItemPressed(id: Int) {
-        if (selectedKeys.isEmpty()) return
-        if (id == R.id.cab_delete) deleteItems()
+        // CAB should never appear in custom selection mode
+        if (!isCustomSelectionMode && selectedKeys.isNotEmpty() && id == R.id.cab_delete) {
+            deleteItems()
+        }
     }
 
     override fun getItemViewType(position: Int) = when (items.getOrNull(position)) {
@@ -78,25 +102,59 @@ class AlarmsAdapter(
         else -> TYPE_ALARM
     }
 
-    override fun getSelectableItemCount() = items.filterIsInstance<Alarm>().size
+    override fun getSelectableItemCount() = items.size
 
-    override fun getIsItemSelectable(position: Int) = items.getOrNull(position) is Alarm
+    override fun getIsItemSelectable(position: Int) = true
 
     override fun getItemSelectionKey(position: Int): Int? {
         val item = items.getOrNull(position)
-        return if (item is Alarm) item.id else null
+        return when (item) {
+            is Alarm -> item.id
+            is AlarmFolder -> -(item.id + FOLDER_KEY_OFFSET)
+            else -> null
+        }
     }
 
-    override fun getItemKeyPosition(key: Int) = items.indexOfFirst { (it as? Alarm)?.id == key }
+    override fun getItemKeyPosition(key: Int) = items.indexOfFirst { item ->
+        when (item) {
+            is Alarm -> item.id == key
+            is AlarmFolder -> -(item.id + FOLDER_KEY_OFFSET) == key
+            else -> false
+        }
+    }
 
-    @SuppressLint("NotifyDataSetChanged")
+    /**
+     * The base class started a CAB via long-press. We immediately redirect to
+     * our custom selection mode: save keys after [android.view.ActionMode.finish]
+     * destroys the CAB, then restore them in [onActionModeDestroyed].
+     *
+     * Timing: [viewLongClicked] calls [startActionMode] first (which triggers
+     * this callback), then adds the key to [selectedKeys] via [toggleItemSelection].
+     * We post the dismissal so it runs AFTER the key is added.
+     */
     override fun onActionModeCreated() {
-        notifyDataSetChanged()
+        if (!isCustomSelectionMode) {
+            isCustomSelectionMode = true
+            mainHandler.post {
+                savedSelectedKeys.clear()
+                savedSelectedKeys.addAll(selectedKeys)
+                finishActMode()
+            }
+        }
     }
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onActionModeDestroyed() {
-        notifyDataSetChanged()
+        if (isCustomSelectionMode && savedSelectedKeys.isNotEmpty()) {
+            // The base class just cleared selectedKeys — restore them
+            selectedKeys.clear()
+            selectedKeys.addAll(savedSelectedKeys)
+            savedSelectedKeys.clear()
+            notifyDataSetChanged()
+            notifySelectionChanged()
+        } else if (!isCustomSelectionMode) {
+            notifyDataSetChanged()
+        }
     }
 
     override fun onRowClear(myViewHolder: ViewHolder?) {}
@@ -121,9 +179,9 @@ class AlarmsAdapter(
                 holder.bindView(
                     any = item,
                     allowSingleClick = true,
-                    allowLongClick = false
+                    allowLongClick = true
                 ) { itemView, _ ->
-                    setupFolderView(itemView, item)
+                    setupFolderView(itemView, item, holder)
                 }
                 bindViewHolder(holder)
             }
@@ -142,6 +200,105 @@ class AlarmsAdapter(
 
     override fun getItemCount() = items.size
 
+    /**
+     * Toggle the custom selection mode (Samsung-style checkboxes) on/off.
+     */
+    fun setSelectionMode(isActive: Boolean) {
+        isCustomSelectionMode = isActive
+        if (!isActive) {
+            selectedKeys.clear()
+        }
+        notifyDataSetChanged()
+    }
+
+    fun isInSelectionMode(): Boolean = isCustomSelectionMode
+
+    /**
+     * Toggle selection for an item by its selection key.
+     */
+    fun toggleItemSelection(key: Int) {
+        if (selectedKeys.contains(key)) {
+            selectedKeys.remove(key)
+        } else {
+            selectedKeys.add(key)
+        }
+        notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+
+    /**
+     * Start selection mode with a single item selected.
+     */
+    fun startSelectionWithItem(key: Int) {
+        isCustomSelectionMode = true
+        selectedKeys.clear()
+        selectedKeys.add(key)
+        notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+
+    /**
+     * Select all currently visible, selectable items.
+     */
+    fun selectAllVisible() {
+        for (i in items.indices) {
+            val key = getItemSelectionKey(i) ?: continue
+            selectedKeys.add(key)
+        }
+        notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+
+    /**
+     * Get the selection key for an item at a given position.
+     */
+    fun getSelectionKeyForPosition(position: Int): Int? = getItemSelectionKey(position)
+
+    /**
+     * Get all currently selected items with their types.
+     */
+    fun getSelectedItemsWithTypes(): List<Pair<SelectionType, Any>> {
+        val result = mutableListOf<Pair<SelectionType, Any>>()
+        for (item in items) {
+            when (item) {
+                is Alarm -> {
+                    if (selectedKeys.contains(item.id)) {
+                        result.add(SelectionType.ALARM to item)
+                    }
+                }
+                is AlarmFolder -> {
+                    val key = -(item.id + FOLDER_KEY_OFFSET)
+                    if (selectedKeys.contains(key)) {
+                        result.add(SelectionType.FOLDER to item)
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    fun getSelectedAlarmIds(): List<Int> {
+        return items.filterIsInstance<Alarm>()
+            .filter { selectedKeys.contains(it.id) }
+            .map { it.id }
+    }
+
+    fun getSelectedFolderIds(): List<Int> {
+        return items.filterIsInstance<AlarmFolder>()
+            .filter { selectedKeys.contains(-(it.id + FOLDER_KEY_OFFSET)) }
+            .map { it.id }
+    }
+
+    fun hasOffAlarmsSelected(): Boolean {
+        return items.filterIsInstance<Alarm>()
+            .any { selectedKeys.contains(it.id) && !it.isEnabled }
+    }
+
+    fun hasOnAlarmsSelected(): Boolean {
+        return items.filterIsInstance<Alarm>()
+            .any { selectedKeys.contains(it.id) && it.isEnabled }
+    }
+
     @SuppressLint("NotifyDataSetChanged")
     fun updateItems(
         newItems: ArrayList<Any>,
@@ -150,7 +307,9 @@ class AlarmsAdapter(
         items = newItems
         folderAlarmCounts = newFolderAlarmCounts
         notifyDataSetChanged()
-        finishActMode()
+        if (!isCustomSelectionMode) {
+            finishActMode()
+        }
     }
 
     private fun deleteItems() {
@@ -172,7 +331,34 @@ class AlarmsAdapter(
         } as ArrayList<Alarm>
     }
 
-    private fun setupFolderView(view: View, folder: AlarmFolder) {
+    fun notifySelectionChanged() {
+        val selectedIds = selectedKeys.toSet()
+        val selectedTypes = items.filter { item ->
+            val key = when (item) {
+                is Alarm -> item.id
+                is AlarmFolder -> -(item.id + FOLDER_KEY_OFFSET)
+                else -> return@filter false
+            }
+            selectedKeys.contains(key)
+        }.map { item ->
+            when (item) {
+                is Alarm -> SelectionType.ALARM
+                is AlarmFolder -> SelectionType.FOLDER
+                else -> null
+            }
+        }.filterNotNull().toSet()
+
+        val state = if (selectedIds.isEmpty()) {
+            SelectionState.Idle
+        } else {
+            SelectionState.Active(selectedIds, selectedTypes)
+        }
+        onSelectionChanged?.invoke(state)
+    }
+
+    private fun setupFolderView(view: View, folder: AlarmFolder, holder: ViewHolder) {
+        val key = -(folder.id + FOLDER_KEY_OFFSET)
+        val isSelected = selectedKeys.contains(key)
         ItemFolderBinding.bind(view).apply {
             folderName.text = folder.name
             val counts = folderAlarmCounts[folder.id]
@@ -181,7 +367,12 @@ class AlarmsAdapter(
             } else {
                 "0"
             }
-            folderHolder.setOnClickListener { folderClick(folder) }
+
+            // Selection checkbox
+            selectionCheckbox.isChecked = isSelected
+            selectionCheckbox.beVisibleIf(isCustomSelectionMode)
+
+            folderHolder.isSelected = isSelected
         }
     }
 
@@ -190,7 +381,12 @@ class AlarmsAdapter(
         val isSelected = selectedKeys.contains(alarm.id)
         ItemAlarmBinding.bind(view).apply {
             alarmHolder.isSelected = isSelected
-            alarmDragHandle.beVisibleIf(selectedKeys.isNotEmpty())
+
+            // Selection checkbox
+            selectionCheckbox.isChecked = isSelected
+            selectionCheckbox.beVisibleIf(isCustomSelectionMode)
+
+            alarmDragHandle.beVisibleIf(selectedKeys.isNotEmpty() && !isCustomSelectionMode)
             alarmDragHandle.applyColorFilter(textColor)
             alarmDragHandle.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_DOWN) {
@@ -214,9 +410,14 @@ class AlarmsAdapter(
 
             alarmSwitch.isChecked = alarm.isEnabled
             alarmSwitch.setColors(textColor, properPrimaryColor, backgroundColor)
+            alarmSwitch.isEnabled = !isCustomSelectionMode
+            alarmSwitch.alpha = if (isCustomSelectionMode) 0.4f else 1.0f
             alarmSwitch.setOnClickListener {
-                toggleAlarm(binding = this, alarm = alarm)
+                if (!isCustomSelectionMode) {
+                    toggleAlarm(binding = this, alarm = alarm)
+                }
             }
+
         }
     }
 

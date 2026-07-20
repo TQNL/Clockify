@@ -9,6 +9,7 @@ import org.fossify.clock.helpers.SORT_BY_DATE_AND_TIME
 import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmFolder
 import org.fossify.clock.models.FolderAlarmCounts
+import org.fossify.clock.models.SelectionState
 import org.fossify.commons.helpers.SORT_BY_CUSTOM
 import org.fossify.commons.helpers.SORT_BY_DATE_CREATED
 
@@ -85,6 +86,11 @@ class FolderFragment : AlarmFragment {
     }
 
     override fun onAlarmItemClick(item: Any) {
+        // In selection mode, toggle selection instead of navigating
+        if (selectionState !is SelectionState.Idle) {
+            toggleItemSelection(item)
+            return
+        }
         // Inside a folder, the list contains only Alarms — no folder navigation.
         if (item is Alarm) openEditAlarm(item)
     }

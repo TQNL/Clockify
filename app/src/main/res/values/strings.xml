@@ -53,6 +53,29 @@
     <string name="n_alarm">%d alarm</string>
     <string name="no_alarms">Empty</string>
 
+    <!-- Selection -->
+    <string name="select_alarms">Select alarms</string>
+    <string name="selected_count">%d selected</string>
+    <string name="select_all">All</string>
+    <string name="turn_on">Turn on</string>
+    <string name="turn_off">Turn off</string>
+    <string name="group_selected">Group</string>
+    <string name="move_selected">Move</string>
+    <string name="ungroup_selected">Ungroup</string>
+    <string name="delete_selected">Delete</string>
+    <string name="delete_all">Delete all</string>
+    <string name="move_destination_title">Select destination</string>
+    <string name="move_destination_uncategorized">Alarms</string>
+    <string name="ungroup_confirmation">Your alarms won\'t be deleted.</string>
+    <string name="alarms_moved">Alarms moved.</string>
+    <string name="alarm_set_for">Alarm set for %s from now.</string>
+    <string name="view_action">View</string>
+    <string name="turn_all_on">Turn all on</string>
+    <string name="turn_all_off">Turn all off</string>
+    <string name="no_alarms_in_folder">No alarms</string>
+    <string name="move_button">Move</string>
+    <string name="alarms_deleted">%d alarm(s) deleted</string>
+
     <!-- Timer -->
     <string name="timers_notification_msg">Timers are running</string>
     <string name="timer_single_notification_label_msg">Timer for %s is running</string>

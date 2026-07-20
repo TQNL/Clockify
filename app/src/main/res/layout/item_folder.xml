@@ -12,6 +12,18 @@
     android:paddingHorizontal="@dimen/activity_margin"
     android:paddingVertical="14dp">
 
+    <androidx.appcompat.widget.AppCompatCheckBox
+        android:id="@+id/selection_checkbox"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:visibility="visible" />
+
     <ImageView
         android:id="@+id/folder_icon"
         android:layout_width="28dp"
@@ -20,7 +32,7 @@
         android:contentDescription="@string/folder"
         android:alpha="0.8"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintStart_toEndOf="@id/selection_checkbox"
         app:layout_constraintTop_toTopOf="parent" />
 
     <org.fossify.commons.views.MyTextView

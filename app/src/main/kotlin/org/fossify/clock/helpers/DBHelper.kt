@@ -11,6 +11,7 @@ import org.fossify.clock.extensions.cancelAlarmClock
 import org.fossify.clock.extensions.createNewAlarm
 import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmFolder
+import org.fossify.clock.models.FolderAlarmCounts
 import org.fossify.commons.extensions.getIntValue
 import org.fossify.commons.extensions.notificationManager
 import org.fossify.commons.extensions.getStringValue
@@ -267,6 +268,112 @@ class DBHelper private constructor(
         if (folderId != null) values.put(COL_FOLDER_ID, folderId)
         else values.putNull(COL_FOLDER_ID)
         mDb.update(ALARMS_TABLE_NAME, values, "$COL_ID = ?", arrayOf(alarmId.toString()))
+    }
+
+    // --- Bulk operations ---
+
+    fun moveAlarmsToFolder(alarmIds: List<Int>, folderId: Int?) {
+        if (alarmIds.isEmpty()) return
+        val values = ContentValues()
+        if (folderId != null) values.put(COL_FOLDER_ID, folderId)
+        else values.putNull(COL_FOLDER_ID)
+        val args = TextUtils.join(", ", alarmIds.map { it.toString() })
+        val selection = "$COL_ID IN ($args)"
+        mDb.beginTransaction()
+        try {
+            mDb.update(ALARMS_TABLE_NAME, values, selection, null)
+            mDb.setTransactionSuccessful()
+        } finally {
+            mDb.endTransaction()
+        }
+    }
+
+    fun updateAlarmsEnabledState(alarmIds: List<Int>, isEnabled: Boolean) {
+        if (alarmIds.isEmpty()) return
+        // Cancel alarm clocks for alarms being disabled
+        if (!isEnabled) {
+            val enabledAlarms = getAlarms().filter { it.id in alarmIds && it.isEnabled }
+            enabledAlarms.forEach { context.cancelAlarmClock(it) }
+        }
+        val values = ContentValues().apply {
+            put(COL_IS_ENABLED, isEnabled)
+        }
+        val args = TextUtils.join(", ", alarmIds.map { it.toString() })
+        val selection = "$COL_ID IN ($args)"
+        mDb.beginTransaction()
+        try {
+            mDb.update(ALARMS_TABLE_NAME, values, selection, null)
+            mDb.setTransactionSuccessful()
+        } finally {
+            mDb.endTransaction()
+        }
+    }
+
+    fun deleteFolderAndKeepAlarms(folderId: Int) {
+        mDb.beginTransaction()
+        try {
+            val values = ContentValues().apply {
+                putNull(COL_FOLDER_ID)
+            }
+            mDb.update(ALARMS_TABLE_NAME, values, "$COL_FOLDER_ID = ?", arrayOf(folderId.toString()))
+            mDb.delete(FOLDERS_TABLE_NAME, "$COL_ID = ?", arrayOf(folderId.toString()))
+            mDb.setTransactionSuccessful()
+        } finally {
+            mDb.endTransaction()
+        }
+    }
+
+    fun getFolderAlarmCounts(): Map<Int, FolderAlarmCounts> {
+        val result = mutableMapOf<Int, FolderAlarmCounts>()
+        val query = """
+            SELECT $COL_FOLDER_ID, $COL_IS_ENABLED, COUNT(*) AS cnt
+            FROM $ALARMS_TABLE_NAME
+            WHERE $COL_FOLDER_ID IS NOT NULL
+            GROUP BY $COL_FOLDER_ID, $COL_IS_ENABLED
+        """.trimIndent()
+        var cursor: Cursor? = null
+        try {
+            cursor = mDb.rawQuery(query, null)
+            if (cursor?.moveToFirst() == true) {
+                do {
+                    val folderIdIdx = cursor.getColumnIndex(COL_FOLDER_ID)
+                    if (cursor.isNull(folderIdIdx)) continue
+                    val folderId = cursor.getInt(folderIdIdx)
+                    val isEnabled = cursor.getInt(cursor.getColumnIndex(COL_IS_ENABLED)) == 1
+                    val count = cursor.getInt(cursor.getColumnIndex("cnt"))
+                    val existing = result[folderId]
+                    if (existing != null) {
+                        result[folderId] = if (isEnabled) {
+                            FolderAlarmCounts(enabled = count, disabled = existing.disabled)
+                        } else {
+                            FolderAlarmCounts(enabled = existing.enabled, disabled = count)
+                        }
+                    } else {
+                        result[folderId] = if (isEnabled) {
+                            FolderAlarmCounts(enabled = count, disabled = 0)
+                        } else {
+                            FolderAlarmCounts(enabled = 0, disabled = count)
+                        }
+                    }
+                } while (cursor.moveToNext())
+            }
+        } finally {
+            cursor?.close()
+        }
+        return result
+    }
+
+    fun getUncategorizedAlarmCount(): Int {
+        var cursor: Cursor? = null
+        try {
+            cursor = mDb.rawQuery(
+                "SELECT COUNT(*) FROM $ALARMS_TABLE_NAME WHERE $COL_FOLDER_ID IS NULL",
+                null
+            )
+            return if (cursor?.moveToFirst() == true) cursor.getInt(0) else 0
+        } finally {
+            cursor?.close()
+        }
     }
 
 }
