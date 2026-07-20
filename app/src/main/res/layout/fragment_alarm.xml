@@ -60,6 +60,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_below="@id/alarm_hero"
+            android:layout_above="@+id/selection_bottom_bar"
             android:clipToPadding="false"
             android:overScrollMode="ifContentScrolls"
             android:paddingBottom="@dimen/fab_list_bottom_padding"
@@ -84,7 +85,24 @@
             android:textStyle="italic"
             android:visibility="gone" />
 
+        <!-- Selection bottom action bar -->
+        <include
+            android:id="@+id/selection_bottom_bar"
+            layout="@layout/view_selection_bottom_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:visibility="gone" />
+
     </RelativeLayout>
+
+    <!-- Selection header overlay -->
+    <include
+        android:id="@+id/selection_header"
+        layout="@layout/view_selection_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
 
     <org.fossify.commons.views.MyFloatingActionButton
         android:id="@+id/alarm_fab"

@@ -491,6 +491,18 @@ class MainActivity : SimpleActivity() {
         refreshMenuItems()
     }
 
+    /** Hide/show the top toolbar (including the CAB) during Samsung-style selection mode. */
+    fun setToolbarVisible(visible: Boolean) {
+        val visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
+        binding.mainToolbar.visibility = visibility
+        binding.mainAppbar.visibility = visibility
+    }
+
+    /** Hide/show the bottom tab bar during Samsung-style selection mode. */
+    fun setTabBarVisible(visible: Boolean) {
+        binding.mainTabsHolder.visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
+    }
+
     fun closeFolderFragment() {
         if (binding.fragmentContainer.visibility != android.view.View.VISIBLE) return
 

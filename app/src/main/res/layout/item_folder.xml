@@ -12,6 +12,19 @@
     android:paddingHorizontal="@dimen/activity_margin"
     android:paddingVertical="14dp">
 
+    <!-- Selection check indicator -->
+    <ImageView
+        android:id="@+id/folder_check_indicator"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginStart="16dp"
+        android:src="@drawable/selector_selection_check"
+        android:visibility="gone"
+        android:contentDescription="@null"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <ImageView
         android:id="@+id/folder_icon"
         android:layout_width="28dp"
@@ -20,7 +33,7 @@
         android:contentDescription="@string/folder"
         android:alpha="0.8"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintStart_toEndOf="@id/folder_check_indicator"
         app:layout_constraintTop_toTopOf="parent" />
 
     <org.fossify.commons.views.MyTextView

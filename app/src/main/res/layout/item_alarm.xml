@@ -12,6 +12,19 @@
     android:paddingHorizontal="@dimen/activity_margin"
     android:paddingVertical="@dimen/medium_margin">
 
+    <!-- Selection check indicator -->
+    <ImageView
+        android:id="@+id/alarm_check_indicator"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_marginStart="16dp"
+        android:src="@drawable/selector_selection_check"
+        android:visibility="gone"
+        android:contentDescription="@null"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <org.fossify.commons.views.MyTextView
         android:id="@+id/alarm_time"
         android:layout_width="0dp"
@@ -22,7 +35,7 @@
         android:maxLines="1"
         android:textSize="@dimen/alarm_text_size"
         app:layout_constraintEnd_toStartOf="@id/alarm_switch"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintStart_toEndOf="@id/alarm_check_indicator"
         app:layout_constraintTop_toTopOf="parent"
         tools:text="07:00" />
 
@@ -36,7 +49,7 @@
         android:paddingHorizontal="@dimen/tiny_margin"
         android:textSize="@dimen/bigger_text_size"
         app:layout_constraintEnd_toStartOf="@id/alarm_switch"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintStart_toEndOf="@id/alarm_check_indicator"
         app:layout_constraintTop_toBottomOf="@id/alarm_time"
         tools:text="Mon, Tue, Wed, Thu, Fri" />
 
@@ -50,7 +63,7 @@
         android:paddingHorizontal="@dimen/tiny_margin"
         android:textSize="@dimen/bigger_text_size"
         app:layout_constraintEnd_toStartOf="@id/alarm_switch"
-        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintStart_toEndOf="@id/alarm_check_indicator"
         app:layout_constraintTop_toBottomOf="@id/alarm_days"
         tools:text="Good morning!" />
 

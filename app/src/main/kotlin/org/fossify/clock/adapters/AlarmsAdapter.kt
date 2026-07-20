@@ -22,6 +22,7 @@ import org.fossify.clock.models.AlarmFolder
 import org.fossify.clock.models.FolderAlarmCounts
 import org.fossify.clock.selection.SelectionAction
 import org.fossify.clock.selection.SelectionActionHandler
+import org.fossify.clock.selection.SelectionModeListener
 import org.fossify.clock.selection.SelectionSnapshot
 import org.fossify.clock.selection.actionLabel
 import org.fossify.clock.selection.computeActions
@@ -64,6 +65,12 @@ class AlarmsAdapter(
     }
 
     private var startReorderDragListener: StartReorderDragListener
+
+    /** Fragment-provided listener for Samsung-style screen transformation. */
+    var selectionModeListener: SelectionModeListener? = null
+
+    /** True while an ActionMode (long-press selection) is active. */
+    private var isInActionMode = false
 
     init {
         setupDragListener(true)
@@ -111,6 +118,8 @@ class AlarmsAdapter(
             it.isVisible = SelectionAction.DELETE_ALL in actions
             it.title = actionLabel(SelectionAction.DELETE_ALL, snapshot)
         }
+
+        notifySelectionChanged()
     }
 
     override fun actionItemPressed(id: Int) {
@@ -136,6 +145,68 @@ class AlarmsAdapter(
             }
         }
     }
+
+    // --- Samsung-style selection support -----------------------------------
+
+    private fun notifySelectionChanged() {
+        val snapshot = currentSelectionSnapshot()
+        selectionModeListener?.onSelectionModeChanged(snapshot)
+    }
+
+    /**
+     * Execute a [SelectionAction] from the Samsung-style bottom action bar.
+     * Delegates to the [SelectionActionHandler], then finishes the ActionMode.
+     */
+    fun executeAction(action: SelectionAction) {
+        val handler = selectionActionHandler ?: return
+        val alarms = selectedAlarms()
+        val folders = selectedFolders()
+        when (action) {
+            SelectionAction.TURN_ON -> handler.turnOn(alarms, folders)
+            SelectionAction.TURN_OFF -> handler.turnOff(alarms, folders)
+            SelectionAction.GROUP -> handler.group(alarms)
+            SelectionAction.MOVE -> handler.move(alarms)
+            SelectionAction.UNGROUP -> handler.ungroup(folders)
+            SelectionAction.DELETE -> {
+                ConfirmationDialog(activity, activity.getString(R.string.delete_alarms_confirmation)) {
+                    handler.delete(alarms)
+                }
+            }
+            SelectionAction.DELETE_ALL -> {
+                ConfirmationDialog(activity, activity.getString(R.string.delete_alarms_confirmation)) {
+                    handler.deleteAll(alarms, folders)
+                }
+            }
+        }
+        finishActMode()
+    }
+
+    /** Public convenience to exit selection mode from outside. */
+    fun exitSelectionMode() {
+        finishActMode()
+    }
+
+    /** Select every selectable item in the adapter. */
+    fun selectAllItems() {
+        for (i in 0 until itemCount) {
+            val key = getItemSelectionKey(i)
+            if (key != null) {
+                selectedKeys.add(key)
+            }
+        }
+        notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+
+    /** Clear all selections without leaving ActionMode. */
+    fun deselectAll() {
+        selectedKeys.clear()
+        notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+
+    /** Expose the protected [selectedKeys] set for fragment access. */
+    fun getSelectedKeysSet(): LinkedHashSet<Int> = selectedKeys
 
     override fun getItemViewType(position: Int) = when (items.getOrNull(position)) {
         is AlarmFolder -> TYPE_FOLDER
@@ -170,12 +241,16 @@ class AlarmsAdapter(
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onActionModeCreated() {
+        isInActionMode = true
         notifyDataSetChanged()
+        selectionModeListener?.onSelectionModeStarted()
     }
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onActionModeDestroyed() {
+        isInActionMode = false
         notifyDataSetChanged()
+        selectionModeListener?.onSelectionModeEnded()
     }
 
     override fun onRowClear(myViewHolder: ViewHolder?) {}
@@ -257,6 +332,16 @@ class AlarmsAdapter(
         val isSelected = selectedKeys.contains(folder.id + FOLDER_KEY_OFFSET)
         ItemFolderBinding.bind(view).apply {
             folderHolder.isSelected = isSelected
+
+            // Selection mode: show check indicator, hide icon and chevron
+            val showSelectionUI = isInActionMode
+            folderCheckIndicator.beVisibleIf(showSelectionUI)
+            folderIcon.beVisibleIf(!showSelectionUI)
+            folderChevron.beVisibleIf(!showSelectionUI)
+            if (showSelectionUI) {
+                folderCheckIndicator.isSelected = isSelected
+            }
+
             folderName.text = folder.name
             val counts = folderAlarmCounts[folder.id]
             folderCount.text = if (counts != null) {
@@ -276,7 +361,33 @@ class AlarmsAdapter(
         val isSelected = selectedKeys.contains(alarm.id)
         ItemAlarmBinding.bind(view).apply {
             alarmHolder.isSelected = isSelected
-            alarmDragHandle.beVisibleIf(selectedKeys.isNotEmpty())
+
+            if (isInActionMode) {
+                // Selection mode: simplified view — time, date in accent, check indicator only
+                alarmCheckIndicator.beVisibleIf(true)
+                alarmCheckIndicator.isSelected = isSelected
+                alarmSwitch.visibility = View.GONE
+                alarmLabel.visibility = View.GONE
+                alarmDragHandle.visibility = View.GONE
+
+                // Show day/date line in accent color for non-recurring alarms ("Today"/"Tomorrow"),
+                // hide day-of-week chips for recurring alarms.
+                if (alarm.isRecurring()) {
+                    alarmDays.visibility = View.GONE
+                } else {
+                    alarmDays.visibility = View.VISIBLE
+                    alarmDays.setTextColor(properPrimaryColor)
+                }
+            } else {
+                // Normal mode
+                alarmCheckIndicator.visibility = View.GONE
+                alarmSwitch.visibility = View.VISIBLE
+                alarmDays.visibility = View.VISIBLE
+                alarmLabel.beVisibleIf(alarm.label.isNotEmpty())
+                alarmDragHandle.beVisibleIf(selectedKeys.isNotEmpty())
+                alarmDays.setTextColor(textColor)
+            }
+
             alarmDragHandle.applyColorFilter(textColor)
             alarmDragHandle.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_DOWN) {
@@ -292,11 +403,9 @@ class AlarmsAdapter(
             alarmTime.setTextColor(textColor)
 
             alarmDays.text = getAlarmSelectedDaysString(alarm)
-            alarmDays.setTextColor(textColor)
 
             alarmLabel.text = alarm.label
             alarmLabel.setTextColor(textColor)
-            alarmLabel.beVisibleIf(alarm.label.isNotEmpty())
 
             alarmSwitch.isChecked = alarm.isEnabled
             alarmSwitch.setColors(textColor, properPrimaryColor, backgroundColor)
