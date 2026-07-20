@@ -17,6 +17,18 @@
         android:title="@string/add_alarm"
         app:showAsAction="always" />
     <item
+        android:id="@+id/turn_all_on"
+        android:icon="@drawable/ic_power_on_vector"
+        android:title="@string/turn_all_on"
+        android:visible="false"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/turn_all_off"
+        android:icon="@drawable/ic_power_off_vector"
+        android:title="@string/turn_all_off"
+        android:visible="false"
+        app:showAsAction="always" />
+    <item
         android:id="@+id/settings"
         android:icon="@drawable/ic_settings_cog_vector"
         android:title="@string/settings"

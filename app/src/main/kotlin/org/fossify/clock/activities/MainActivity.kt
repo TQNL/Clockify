@@ -205,6 +205,16 @@ class MainActivity : SimpleActivity() {
                     }
                 }
 
+                R.id.turn_all_on -> {
+                    (supportFragmentManager.findFragmentById(R.id.fragment_container) as? AlarmFragment)
+                        ?.turnAllAlarms(enabled = true)
+                }
+
+                R.id.turn_all_off -> {
+                    (supportFragmentManager.findFragmentById(R.id.fragment_container) as? AlarmFragment)
+                        ?.turnAllAlarms(enabled = false)
+                }
+
                 R.id.more_apps_from_us -> launchMoreAppsFromUsIntent()
                 R.id.settings -> launchSettings()
                 R.id.about -> launchAbout()
@@ -222,6 +232,9 @@ class MainActivity : SimpleActivity() {
                 || binding.viewPager.currentItem == getTabIndex(TAB_TIMER)
             findItem(R.id.create_folder).isVisible = isAlarmTab && !isFolderView
             findItem(R.id.add_alarm).isVisible = isAlarmTab || isFolderView
+            // Samsung-style group-level controls: only inside a folder view.
+            findItem(R.id.turn_all_on).isVisible = isFolderView
+            findItem(R.id.turn_all_off).isVisible = isFolderView
             findItem(R.id.more_apps_from_us).isVisible =
                 !resources.getBoolean(org.fossify.commons.R.bool.hide_google_relations)
         }

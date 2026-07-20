@@ -19,8 +19,13 @@ import org.fossify.clock.interfaces.ToggleAlarmInterface
 import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmEvent
 import org.fossify.clock.models.AlarmFolder
-import org.fossify.commons.adapters.MyRecyclerViewAdapter
 import org.fossify.clock.models.FolderAlarmCounts
+import org.fossify.clock.selection.SelectionAction
+import org.fossify.clock.selection.SelectionActionHandler
+import org.fossify.clock.selection.SelectionSnapshot
+import org.fossify.clock.selection.actionLabel
+import org.fossify.clock.selection.computeActions
+import org.fossify.commons.adapters.MyRecyclerViewAdapter
 import org.fossify.commons.dialogs.ConfirmationDialog
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.beVisibleIf
@@ -39,15 +44,23 @@ class AlarmsAdapter(
     private val toggleAlarmInterface: ToggleAlarmInterface,
     recyclerView: MyRecyclerView,
     itemClick: (Any) -> Unit,
-    private val folderClick: (AlarmFolder) -> Unit,
     private var folderAlarmCounts: Map<Int, FolderAlarmCounts>,
     /** Non-null when this adapter is inside a folder view — routes manual ordering to a per-folder config key. */
     private val folderId: Int? = null,
+    /** Receives Samsung-style selection actions (Turn on, Move, Ungroup, …). */
+    private val selectionActionHandler: SelectionActionHandler? = null,
 ) : MyRecyclerViewAdapter(activity, recyclerView, itemClick), ItemTouchHelperContract {
 
     companion object {
         private const val TYPE_ALARM = 0
         private const val TYPE_FOLDER = 1
+
+        /**
+         * Selection keys for folders are offset by this much so they never
+         * collide with alarm ids (which come from a separate table).
+         * [keyToFolderId]/[keyToAlarmId] map back.
+         */
+        private const val FOLDER_KEY_OFFSET = 1_000_000
     }
 
     private var startReorderDragListener: StartReorderDragListener
@@ -66,11 +79,62 @@ class AlarmsAdapter(
 
     override fun getActionMenuId() = R.menu.cab_alarms
 
-    override fun prepareActionMode(menu: Menu) {}
+    /**
+     * Called by the commons CAB on every selection change. Delegates the
+     * action-set decision to the pure [computeActions] function and just
+     * shows/hides + relabels the menu items accordingly.
+     */
+    override fun prepareActionMode(menu: Menu) {
+        val snapshot = currentSelectionSnapshot()
+        val actions = computeActions(snapshot)
+        menu.findItem(R.id.cab_turn_on)?.let {
+            it.isVisible = SelectionAction.TURN_ON in actions
+            it.title = actionLabel(SelectionAction.TURN_ON, snapshot)
+        }
+        menu.findItem(R.id.cab_turn_off)?.let {
+            it.isVisible = SelectionAction.TURN_OFF in actions
+            it.title = actionLabel(SelectionAction.TURN_OFF, snapshot)
+        }
+        menu.findItem(R.id.cab_group)?.let {
+            it.isVisible = SelectionAction.GROUP in actions
+        }
+        menu.findItem(R.id.cab_move)?.let {
+            it.isVisible = SelectionAction.MOVE in actions
+        }
+        menu.findItem(R.id.cab_ungroup)?.let {
+            it.isVisible = SelectionAction.UNGROUP in actions
+        }
+        menu.findItem(R.id.cab_delete)?.let {
+            it.isVisible = SelectionAction.DELETE in actions
+        }
+        menu.findItem(R.id.cab_delete_all)?.let {
+            it.isVisible = SelectionAction.DELETE_ALL in actions
+            it.title = actionLabel(SelectionAction.DELETE_ALL, snapshot)
+        }
+    }
 
     override fun actionItemPressed(id: Int) {
         if (selectedKeys.isEmpty()) return
-        if (id == R.id.cab_delete) deleteItems()
+        val handler = selectionActionHandler ?: return
+        val alarms = selectedAlarms()
+        val folders = selectedFolders()
+        when (id) {
+            R.id.cab_turn_on -> handler.turnOn(alarms, folders)
+            R.id.cab_turn_off -> handler.turnOff(alarms, folders)
+            R.id.cab_group -> handler.group(alarms)
+            R.id.cab_move -> handler.move(alarms)
+            R.id.cab_ungroup -> handler.ungroup(folders)
+            R.id.cab_delete -> {
+                ConfirmationDialog(activity, activity.getString(R.string.delete_alarms_confirmation)) {
+                    handler.delete(alarms)
+                }
+            }
+            R.id.cab_delete_all -> {
+                ConfirmationDialog(activity, activity.getString(R.string.delete_alarms_confirmation)) {
+                    handler.deleteAll(alarms, folders)
+                }
+            }
+        }
     }
 
     override fun getItemViewType(position: Int) = when (items.getOrNull(position)) {
@@ -78,16 +142,31 @@ class AlarmsAdapter(
         else -> TYPE_ALARM
     }
 
-    override fun getSelectableItemCount() = items.filterIsInstance<Alarm>().size
+    /**
+     * Both alarms and folders participate in selection mode (Samsung lets you
+     * long-press either). Folder keys are offset by [FOLDER_KEY_OFFSET].
+     */
+    override fun getSelectableItemCount() =
+        items.count { it is Alarm || it is AlarmFolder }
 
-    override fun getIsItemSelectable(position: Int) = items.getOrNull(position) is Alarm
+    override fun getIsItemSelectable(position: Int) =
+        items.getOrNull(position) is Alarm || items.getOrNull(position) is AlarmFolder
 
     override fun getItemSelectionKey(position: Int): Int? {
-        val item = items.getOrNull(position)
-        return if (item is Alarm) item.id else null
+        return when (val item = items.getOrNull(position)) {
+            is Alarm -> item.id
+            is AlarmFolder -> item.id + FOLDER_KEY_OFFSET
+            else -> null
+        }
     }
 
-    override fun getItemKeyPosition(key: Int) = items.indexOfFirst { (it as? Alarm)?.id == key }
+    override fun getItemKeyPosition(key: Int): Int {
+        if (key >= FOLDER_KEY_OFFSET) {
+            val folderId = key - FOLDER_KEY_OFFSET
+            return items.indexOfFirst { (it as? AlarmFolder)?.id == folderId }
+        }
+        return items.indexOfFirst { (it as? Alarm)?.id == key }
+    }
 
     @SuppressLint("NotifyDataSetChanged")
     override fun onActionModeCreated() {
@@ -121,7 +200,7 @@ class AlarmsAdapter(
                 holder.bindView(
                     any = item,
                     allowSingleClick = true,
-                    allowLongClick = false
+                    allowLongClick = true
                 ) { itemView, _ ->
                     setupFolderView(itemView, item)
                 }
@@ -153,27 +232,31 @@ class AlarmsAdapter(
         finishActMode()
     }
 
-    private fun deleteItems() {
-        val alarmsToRemove = ArrayList<Alarm>()
-        val positions = getSelectedItemPositions()
-        getSelectedItems().forEach {
-            alarmsToRemove.add(it)
-        }
+    // --- Selection helpers ------------------------------------------------
 
-        items = ArrayList(items.filter { it !in alarmsToRemove })
-        removeSelectedItems(positions)
-        activity.dbHelper.deleteAlarms(alarmsToRemove)
-        EventBus.getDefault().post(AlarmEvent.Refresh)
+    /** Snapshot of the current selection for [computeActions]. */
+    private fun currentSelectionSnapshot(): SelectionSnapshot {
+        return SelectionSnapshot(
+            alarms = selectedAlarms(),
+            folders = selectedFolders(),
+            folderCounts = folderAlarmCounts,
+            inFolderView = folderId != null,
+        )
     }
 
-    private fun getSelectedItems(): ArrayList<Alarm> {
-        return items.filterIsInstance<Alarm>().filter {
-            selectedKeys.contains(it.id)
-        } as ArrayList<Alarm>
-    }
+    private fun selectedAlarms(): List<Alarm> =
+        items.filterIsInstance<Alarm>().filter { selectedKeys.contains(it.id) }
+
+    private fun selectedFolders(): List<AlarmFolder> =
+        items.filterIsInstance<AlarmFolder>()
+            .filter { selectedKeys.contains(it.id + FOLDER_KEY_OFFSET) }
+
+    // --- View binding -----------------------------------------------------
 
     private fun setupFolderView(view: View, folder: AlarmFolder) {
+        val isSelected = selectedKeys.contains(folder.id + FOLDER_KEY_OFFSET)
         ItemFolderBinding.bind(view).apply {
+            folderHolder.isSelected = isSelected
             folderName.text = folder.name
             val counts = folderAlarmCounts[folder.id]
             folderCount.text = if (counts != null) {
@@ -181,7 +264,10 @@ class AlarmsAdapter(
             } else {
                 "0"
             }
-            folderHolder.setOnClickListener { folderClick(folder) }
+            // No custom click listener here: folder_holder IS the itemView, so
+            // the base ViewHolder's listener handles both normal clicks
+            // (forwards to itemClick → openFolderFragment) and selection-mode
+            // taps (toggles selection). A child listener would shadow it.
         }
     }
 

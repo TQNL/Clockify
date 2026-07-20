@@ -34,6 +34,9 @@ import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmEvent
 import org.fossify.clock.models.AlarmFolder
 import org.fossify.clock.models.FolderAlarmCounts
+import org.fossify.clock.dialogs.SelectFolderDialog
+import org.fossify.clock.dialogs.UngroupConfirmDialog
+import org.fossify.clock.selection.SelectionActionHandler
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperTextColor
@@ -48,7 +51,7 @@ import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
 
-open class AlarmFragment : Fragment(), ToggleAlarmInterface {
+open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHandler {
     companion object {
         private const val HERO_REFRESH_INTERVAL = 60_000L // refresh every 60 seconds
 
@@ -162,6 +165,16 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface {
     /** Public entry point for the toolbar "+" button. */
     fun addAlarm() {
         openEditAlarm(createFabAlarm())
+    }
+
+    /**
+     * Turn every alarm in the current view (folder or main list) on/off.
+     * Samsung-style "Turn all on / Turn all off" folder-level control.
+     */
+    fun turnAllAlarms(enabled: Boolean) {
+        val alarms = items.filterIsInstance<Alarm>()
+        if (alarms.isEmpty()) return
+        applyEnabledState(alarms, enabled = enabled)
     }
 
     // -----------------------------------------------------------------
@@ -278,11 +291,9 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface {
                     toggleAlarmInterface = this,
                     recyclerView = binding.alarmsList,
                     itemClick = { clicked -> onAlarmItemClick(clicked) },
-                    folderClick = { folder ->
-                        (activity as? MainActivity)?.openFolderFragment(folder.id, folder.name)
-                    },
                     folderAlarmCounts = folderCounts,
                     folderId = folderId,
+                    selectionActionHandler = this,
                 ).apply {
                     binding.alarmsList.adapter = this
                 }
@@ -356,6 +367,140 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface {
 
     fun updateAlarmSound(alarmSound: AlarmSound) {
         currentEditAlarmDialog?.updateSelectedAlarmSound(alarmSound)
+    }
+
+    // -----------------------------------------------------------------
+    // SelectionActionHandler — Samsung-style contextual actions
+    // -----------------------------------------------------------------
+
+    override fun turnOn(alarms: List<Alarm>, folders: List<AlarmFolder>) {
+        applyEnabledState(expandSelection(alarms, folders), enabled = true)
+    }
+
+    override fun turnOff(alarms: List<Alarm>, folders: List<AlarmFolder>) {
+        applyEnabledState(expandSelection(alarms, folders), enabled = false)
+    }
+
+    override fun group(alarms: List<Alarm>) {
+        if (alarms.isEmpty()) return
+        val safeActivity = activity as? SimpleActivity ?: return
+        SelectFolderDialog(
+            activity = safeActivity,
+            titleId = R.string.folder,
+            currentFolderId = alarms.firstOrNull()?.folderId,
+        ) { folderId ->
+            ensureBackgroundThread {
+                alarms.forEach { alarm ->
+                    if (alarm.folderId != folderId) {
+                        requireContext().dbHelper.moveAlarmToFolder(alarm.id, folderId)
+                    }
+                }
+                EventBus.getDefault().post(AlarmEvent.Refresh)
+                activity?.runOnUiThread {
+                    requireActivity().toast(R.string.alarms_moved)
+                }
+            }
+        }
+    }
+
+    override fun move(alarms: List<Alarm>) {
+        if (alarms.isEmpty()) return
+        val safeActivity = activity as? SimpleActivity ?: return
+        SelectFolderDialog(
+            activity = safeActivity,
+            titleId = R.string.select_folder,
+            currentFolderId = alarms.firstOrNull()?.folderId,
+        ) { folderId ->
+            ensureBackgroundThread {
+                alarms.forEach { alarm ->
+                    if (alarm.folderId != folderId) {
+                        requireContext().dbHelper.moveAlarmToFolder(alarm.id, folderId)
+                    }
+                }
+                EventBus.getDefault().post(AlarmEvent.Refresh)
+                activity?.runOnUiThread {
+                    requireActivity().toast(R.string.alarms_moved)
+                }
+            }
+        }
+    }
+
+    override fun ungroup(folders: List<AlarmFolder>) {
+        if (folders.isEmpty()) return
+        val safeActivity = activity as? SimpleActivity ?: return
+        UngroupConfirmDialog(activity = safeActivity) {
+            ensureBackgroundThread {
+                folders.forEach { folder ->
+                    requireContext().dbHelper.deleteFolder(folder.id)
+                }
+                EventBus.getDefault().post(AlarmEvent.Refresh)
+                activity?.runOnUiThread {
+                    requireActivity().toast(R.string.alarms_moved)
+                }
+            }
+        }
+    }
+
+    override fun delete(alarms: List<Alarm>) {
+        if (alarms.isEmpty()) return
+        ensureBackgroundThread {
+            requireContext().dbHelper.deleteAlarms(ArrayList(alarms))
+            EventBus.getDefault().post(AlarmEvent.Refresh)
+        }
+    }
+
+    override fun deleteAll(alarms: List<Alarm>, folders: List<AlarmFolder>) {
+        ensureBackgroundThread {
+            val ctx = requireContext()
+            if (alarms.isNotEmpty()) ctx.dbHelper.deleteAlarms(ArrayList(alarms))
+            folders.forEach { folder -> ctx.dbHelper.deleteFolderAndAlarms(folder.id) }
+            EventBus.getDefault().post(AlarmEvent.Refresh)
+        }
+    }
+
+    /**
+     * Expand a selection that may include folders into the flat list of alarms
+     * it covers (folder alarms + standalone alarms), de-duplicated by id.
+     */
+    private fun expandSelection(alarms: List<Alarm>, folders: List<AlarmFolder>): List<Alarm> {
+        val ctx = context ?: return alarms
+        val folderAlarms = folders.flatMap { ctx.dbHelper.getAlarmsInFolder(it.id) }
+        return (alarms + folderAlarms).distinctBy { it.id }
+    }
+
+    /**
+     * Enable/disable a batch of alarms, rescheduling each and showing a
+     * Samsung-style countdown toast when turning on.
+     */
+    private fun applyEnabledState(alarms: List<Alarm>, enabled: Boolean) {
+        val ctx = context ?: return
+        val mainActivity = activity as? MainActivity
+        ensureBackgroundThread {
+            alarms.forEach { alarm ->
+                if (alarm.isEnabled == enabled) return@forEach
+                ctx.dbHelper.updateAlarmEnabledState(alarm.id, enabled)
+                alarm.isEnabled = enabled
+                if (enabled) {
+                    mainActivity?.alarmController?.scheduleNextOccurrence(alarm, showToasts = false)
+                } else {
+                    mainActivity?.cancelAlarmClock(alarm)
+                    ctx.notificationManager.cancel(UPCOMING_ALARM_NOTIFICATION_BASE + alarm.id)
+                }
+            }
+            EventBus.getDefault().post(AlarmEvent.Refresh)
+            if (enabled) {
+                // Toast the soonest alarm countdown, Samsung-style.
+                ctx.getAlarmHeroInfo(folderId = folderId) { heroInfo ->
+                    if (heroInfo.countdownText.isNotEmpty()) {
+                        activity?.runOnUiThread {
+                            requireActivity().toast(heroInfo.countdownText)
+                        }
+                    }
+                }
+            }
+            mainActivity?.updateClockTabAlarm()
+            ctx.updateWidgets()
+        }
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)

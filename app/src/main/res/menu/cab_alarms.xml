@@ -1,9 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
+    <!--
+        Samsung-style contextual alarm/folder actions. Item visibility is
+        driven dynamically by AlarmsAdapter.prepareActionMode() based on the
+        current selection (see SelectionActions.kt). All items start hidden
+        and are shown only when computeActions() returns them.
+    -->
+    <item
+        android:id="@+id/cab_turn_on"
+        android:icon="@drawable/ic_power_on_vector"
+        android:title="@string/turn_on"
+        android:visible="false"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/cab_turn_off"
+        android:icon="@drawable/ic_power_off_vector"
+        android:title="@string/turn_off"
+        android:visible="false"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/cab_group"
+        android:icon="@drawable/ic_folder_vector"
+        android:title="@string/folder"
+        android:visible="false"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/cab_move"
+        android:icon="@drawable/ic_move_vector"
+        android:title="@string/move"
+        android:visible="false"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/cab_ungroup"
+        android:icon="@drawable/ic_ungroup_vector"
+        android:title="@string/ungroup"
+        android:visible="false"
+        app:showAsAction="always" />
     <item
         android:id="@+id/cab_delete"
         android:icon="@drawable/ic_delete_vector"
         android:title="@string/delete"
+        android:visible="false"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/cab_delete_all"
+        android:icon="@drawable/ic_delete_vector"
+        android:title="@string/delete_all"
+        android:visible="false"
         app:showAsAction="always" />
 </menu>

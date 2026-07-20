@@ -260,6 +260,19 @@ class DBHelper private constructor(
         mDb.delete(FOLDERS_TABLE_NAME, "$COL_ID = ?", arrayOf(folderId.toString()))
     }
 
+    /**
+     * Destructive variant of [deleteFolder]: deletes the folder *and* every
+     * alarm inside it (after cancelling any scheduled alarms and their
+     * upcoming-notification). Used by the "Delete all" selection action when a
+     * folder is in scope. Contrast with [deleteFolder], which orphans the
+     * alarms back to the ungrouped list (the "Ungroup" path).
+     */
+    fun deleteFolderAndAlarms(folderId: Int) {
+        val alarms = getAlarmsInFolder(folderId)
+        if (alarms.isNotEmpty()) deleteAlarms(ArrayList(alarms))
+        mDb.delete(FOLDERS_TABLE_NAME, "$COL_ID = ?", arrayOf(folderId.toString()))
+    }
+
     fun getAlarmsInFolder(folderId: Int): List<Alarm> = getAlarms().filter { it.folderId == folderId }
 
     fun moveAlarmToFolder(alarmId: Int, folderId: Int?) {

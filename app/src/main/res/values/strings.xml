@@ -53,6 +53,23 @@
     <string name="n_alarm">%d alarm</string>
     <string name="no_alarms">Empty</string>
 
+    <!-- Selection mode (Samsung-style contextual actions) -->
+    <string name="select_alarms">Select alarms</string>
+    <string name="n_selected">%1$d selected</string>
+    <string name="turn_on">Turn on</string>
+    <string name="turn_off">Turn off</string>
+    <string name="turn_all_on">Turn all on</string>
+    <string name="turn_all_off">Turn all off</string>
+    <string name="move">Move</string>
+    <string name="ungroup">Ungroup</string>
+    <string name="delete_all">Delete all</string>
+    <string name="select_folder">Select folder</string>
+    <string name="alarms_moved">Alarms moved.</string>
+    <string name="ungroup_warning">Your alarms won\'t be deleted.</string>
+    <string name="no_alarms_in_folder">No alarms</string>
+    <string name="delete_alarms_confirmation">Delete the selected alarms?</string>
+    <string name="alarms">Alarms</string>
+
     <!-- Timer -->
     <string name="timers_notification_msg">Timers are running</string>
     <string name="timer_single_notification_label_msg">Timer for %s is running</string>
