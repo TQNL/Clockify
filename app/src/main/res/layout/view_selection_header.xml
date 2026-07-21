@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/selection_header_root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#000000"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingHorizontal="16dp"
@@ -21,17 +21,18 @@
         android:padding="4dp">
 
         <ImageView
+            android:id="@+id/selection_header_all_icon"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:src="@drawable/ic_selection_check_circle_filled"
+            android:src="@drawable/ic_selection_check_circle_outline"
             android:contentDescription="@null" />
 
         <TextView
+            android:id="@+id/selection_header_all_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:text="All"
-            android:textColor="#FFFFFF"
             android:textSize="11sp" />
     </LinearLayout>
 
@@ -43,7 +44,6 @@
         android:layout_weight="1"
         android:gravity="center"
         android:text="Select alarms"
-        android:textColor="#FFFFFF"
         android:textSize="18sp"
         android:textStyle="bold" />
 
@@ -58,7 +58,6 @@
         android:paddingHorizontal="8dp"
         android:paddingVertical="4dp"
         android:text="Cancel"
-        android:textColor="#FFFFFF"
         android:textSize="16sp"
         android:textStyle="bold" />
 

@@ -47,7 +47,9 @@ import org.fossify.clock.selection.SelectionSnapshot
 import org.fossify.clock.selection.actionLabel
 import org.fossify.clock.selection.computeActions
 import org.fossify.commons.extensions.beVisibleIf
+import org.fossify.commons.extensions.getBottomNavigationBackgroundColor
 import org.fossify.commons.extensions.getProperBackgroundColor
+import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.getProperTextColor
 import org.fossify.commons.extensions.notificationManager
 import org.fossify.commons.extensions.toast
@@ -67,6 +69,16 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
         // Bundle argument keys — used by FolderFragment subclass
         protected const val ARG_FOLDER_ID = "folder_id"
         protected const val ARG_FOLDER_NAME = "folder_name"
+
+        fun actionLabelRes(action: SelectionAction): Int = when (action) {
+            SelectionAction.TURN_ON -> R.string.turn_on
+            SelectionAction.TURN_OFF -> R.string.turn_off
+            SelectionAction.GROUP -> R.string.folder
+            SelectionAction.MOVE -> R.string.move
+            SelectionAction.UNGROUP -> R.string.ungroup
+            SelectionAction.DELETE -> R.string.delete
+            SelectionAction.DELETE_ALL -> R.string.delete_all
+        }
     }
 
     // Read from arguments; non-null only when this fragment is acting as a folder view.
@@ -86,6 +98,7 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
     private var selectionBottomBar: ViewGroup? = null
     private var isInSelectionMode = false
     private var heroWasVisibleBeforeSelection = false
+    private var fabWasVisibleBeforeSelection = View.GONE
 
     // -----------------------------------------------------------------
     // Subclass extension points — override in FolderFragment
@@ -402,11 +415,32 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
 
     private fun enterSelectionMode() {
         isInSelectionMode = true
+        val ctx = requireContext()
+        val textColor = ctx.getProperTextColor()
+        // Use the bottom-nav surface color so the header and action bar
+        // are visually distinct from the content background.
+        val surfaceColor = ctx.getBottomNavigationBackgroundColor()
+
         heroWasVisibleBeforeSelection = binding.alarmHero.visibility == View.VISIBLE
+        fabWasVisibleBeforeSelection = binding.alarmFab.visibility
         binding.alarmHero.visibility = View.GONE
         binding.alarmFab.visibility = View.GONE
-        selectionHeader?.visibility = View.VISIBLE
-        selectionBottomBar?.visibility = View.VISIBLE
+
+        // Theme the selection header
+        selectionHeader?.apply {
+            setBackgroundColor(surfaceColor)
+            findViewById<TextView>(R.id.selection_header_title)?.setTextColor(textColor)
+            findViewById<TextView>(R.id.selection_header_all_label)?.setTextColor(textColor)
+            findViewById<TextView>(R.id.selection_header_cancel)?.setTextColor(textColor)
+            visibility = View.VISIBLE
+        }
+
+        // Theme the selection bottom bar
+        selectionBottomBar?.apply {
+            setBackgroundColor(surfaceColor)
+            visibility = View.VISIBLE
+        }
+
         (activity as? MainActivity)?.setTabBarVisible(false)
         (activity as? MainActivity)?.setToolbarVisible(false)
         wireSelectionHeader()
@@ -415,7 +449,7 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
     private fun exitSelectionMode() {
         isInSelectionMode = false
         binding.alarmHero.visibility = if (heroWasVisibleBeforeSelection) View.VISIBLE else View.GONE
-        binding.alarmFab.visibility = View.GONE
+        binding.alarmFab.visibility = fabWasVisibleBeforeSelection
         selectionHeader?.visibility = View.GONE
         selectionBottomBar?.visibility = View.GONE
         (activity as? MainActivity)?.setTabBarVisible(true)
@@ -426,7 +460,6 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
         val headerView = selectionHeader ?: return
         headerView.findViewById<View>(R.id.selection_header_all)?.setOnClickListener {
             val adapter = binding.alarmsList.adapter as? AlarmsAdapter ?: return@setOnClickListener
-            // Toggle between select-all and deselect-all
             if (adapter.getSelectedKeysSet().size == adapter.getSelectableItemCount()) {
                 adapter.deselectAll()
             } else {
@@ -450,28 +483,40 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
             requireContext().getString(R.string.n_selected, count)
         }
 
-        // Bottom bar buttons
+        // Toggle "All" icon: filled when everything is selected, outline otherwise.
+        val adapter = binding.alarmsList.adapter as? AlarmsAdapter
+        val allSelected = adapter != null && adapter.getSelectedKeysSet().size == adapter.getSelectableItemCount()
+        val allIcon = selectionHeader?.findViewById<ImageView>(R.id.selection_header_all_icon)
+        allIcon?.setImageResource(
+            if (allSelected) R.drawable.ic_selection_check_circle_filled
+            else R.drawable.ic_selection_check_circle_outline
+        )
+
+        // Bottom bar buttons — equal-weight distribution, Samsung-style
         val container = selectionBottomBar?.findViewById<ViewGroup>(R.id.selection_actions_container)
         container?.removeAllViews()
         if (actions.isNotEmpty()) {
             for (action in actions) {
-                val button = createActionButton(action, snapshot)
+                val button = createActionButton(action)
                 container?.addView(button)
             }
         }
         container?.visibility = if (actions.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    private fun createActionButton(action: SelectionAction, snapshot: SelectionSnapshot): View {
+    private fun createActionButton(action: SelectionAction): View {
         val ctx = requireContext()
+        val textColor = ctx.getProperTextColor()
         val outer = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            minimumWidth = 80.dpPx()
-            setPadding(4, 8, 4, 8)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setPadding(4.dpPx(), 10.dpPx(), 4.dpPx(), 10.dpPx())
             isClickable = true
             isFocusable = true
-            setBackgroundResource(android.R.attr.selectableItemBackgroundBorderless)
+            val outValue = android.util.TypedValue()
+            ctx.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+            setBackgroundResource(outValue.resourceId)
             setOnClickListener {
                 (binding.alarmsList.adapter as? AlarmsAdapter)?.executeAction(action)
             }
@@ -482,7 +527,8 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
                 gravity = Gravity.CENTER_HORIZONTAL
             }
             setImageResource(actionIconRes(action))
-            alpha = 0.9f
+            setColorFilter(textColor)
+            alpha = 0.85f
         }
         outer.addView(icon)
 
@@ -490,11 +536,13 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 8.dpPx() }
-            text = actionLabel(action, snapshot)
+            ).apply { topMargin = 6.dpPx() }
+            text = getString(actionLabelRes(action))
             textSize = 11f
-            setTextColor(ctx.getProperTextColor())
+            setTextColor(textColor)
             gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
         }
         outer.addView(label)
 

@@ -12,6 +12,6 @@
 
     <!-- White checkmark -->
     <path
-        android:fillColor="#000000"
+        android:fillColor="#FFFFFF"
         android:pathData="M9.55,16.1L5.5,11.5L6.9,10.05L9.55,13L17.1,5.45L18.5,6.9L9.55,16.1Z" />
 </vector>

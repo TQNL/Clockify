@@ -128,19 +128,36 @@ class AlarmsAdapter(
         val alarms = selectedAlarms()
         val folders = selectedFolders()
         when (id) {
-            R.id.cab_turn_on -> handler.turnOn(alarms, folders)
-            R.id.cab_turn_off -> handler.turnOff(alarms, folders)
-            R.id.cab_group -> handler.group(alarms)
-            R.id.cab_move -> handler.move(alarms)
-            R.id.cab_ungroup -> handler.ungroup(folders)
+            R.id.cab_turn_on -> {
+                handler.turnOn(alarms, folders)
+                finishActMode()
+            }
+            R.id.cab_turn_off -> {
+                handler.turnOff(alarms, folders)
+                finishActMode()
+            }
+            R.id.cab_group -> {
+                handler.group(alarms)
+                finishActMode()
+            }
+            R.id.cab_move -> {
+                handler.move(alarms)
+                finishActMode()
+            }
+            R.id.cab_ungroup -> {
+                handler.ungroup(folders)
+                finishActMode()
+            }
             R.id.cab_delete -> {
                 ConfirmationDialog(activity, activity.getString(R.string.delete_alarms_confirmation)) {
                     handler.delete(alarms)
+                    finishActMode()
                 }
             }
             R.id.cab_delete_all -> {
                 ConfirmationDialog(activity, activity.getString(R.string.delete_alarms_confirmation)) {
                     handler.deleteAll(alarms, folders)
+                    finishActMode()
                 }
             }
         }
@@ -162,23 +179,39 @@ class AlarmsAdapter(
         val alarms = selectedAlarms()
         val folders = selectedFolders()
         when (action) {
-            SelectionAction.TURN_ON -> handler.turnOn(alarms, folders)
-            SelectionAction.TURN_OFF -> handler.turnOff(alarms, folders)
-            SelectionAction.GROUP -> handler.group(alarms)
-            SelectionAction.MOVE -> handler.move(alarms)
-            SelectionAction.UNGROUP -> handler.ungroup(folders)
+            SelectionAction.TURN_ON -> {
+                handler.turnOn(alarms, folders)
+                finishActMode()
+            }
+            SelectionAction.TURN_OFF -> {
+                handler.turnOff(alarms, folders)
+                finishActMode()
+            }
+            SelectionAction.GROUP -> {
+                handler.group(alarms)
+                finishActMode()
+            }
+            SelectionAction.MOVE -> {
+                handler.move(alarms)
+                finishActMode()
+            }
+            SelectionAction.UNGROUP -> {
+                handler.ungroup(folders)
+                finishActMode()
+            }
             SelectionAction.DELETE -> {
                 ConfirmationDialog(activity, activity.getString(R.string.delete_alarms_confirmation)) {
                     handler.delete(alarms)
+                    finishActMode()
                 }
             }
             SelectionAction.DELETE_ALL -> {
                 ConfirmationDialog(activity, activity.getString(R.string.delete_alarms_confirmation)) {
                     handler.deleteAll(alarms, folders)
+                    finishActMode()
                 }
             }
         }
-        finishActMode()
     }
 
     /** Public convenience to exit selection mode from outside. */

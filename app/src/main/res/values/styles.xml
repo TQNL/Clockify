@@ -1,5 +1,12 @@
 <resources>
 
-    <style name="AppTheme" parent="AppTheme.Base"/>
+    <style name="AppTheme" parent="AppTheme.Base">
+        <!-- Samsung-style selection mode: suppress the standard CAB so our
+             custom selection header and bottom bar are the only visible UI.
+             The ActionMode is still active (it drives selectedKeys tracking)
+             but its visual chrome is hidden. -->
+        <item name="actionModeBackground">@android:color/transparent</item>
+        <item name="android:actionModeBackground">@android:color/transparent</item>
+    </style>
 
 </resources>

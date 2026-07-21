@@ -67,6 +67,7 @@ class MainActivity : SimpleActivity() {
     private var storedBackgroundColor = 0
     private var storedPrimaryColor = 0
     private lateinit var folderBackCallback: OnBackPressedCallback
+    private var tabBarWasVisible = true
     private val binding: ActivityMainBinding by viewBinding(ActivityMainBinding::inflate)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -500,7 +501,14 @@ class MainActivity : SimpleActivity() {
 
     /** Hide/show the bottom tab bar during Samsung-style selection mode. */
     fun setTabBarVisible(visible: Boolean) {
-        binding.mainTabsHolder.visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
+        if (visible) {
+            if (tabBarWasVisible) {
+                binding.mainTabsHolder.visibility = android.view.View.VISIBLE
+            }
+        } else {
+            tabBarWasVisible = binding.mainTabsHolder.visibility == android.view.View.VISIBLE
+            binding.mainTabsHolder.visibility = android.view.View.GONE
+        }
     }
 
     fun closeFolderFragment() {
