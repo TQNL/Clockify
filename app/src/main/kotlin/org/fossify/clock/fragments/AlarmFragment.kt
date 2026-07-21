@@ -46,6 +46,7 @@ import org.fossify.clock.selection.SelectionModeListener
 import org.fossify.clock.selection.SelectionSnapshot
 import org.fossify.clock.selection.actionLabel
 import org.fossify.clock.selection.computeActions
+import android.util.TypedValue
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperTextColor
@@ -471,7 +472,9 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
             setPadding(4, 8, 4, 8)
             isClickable = true
             isFocusable = true
-            setBackgroundResource(android.R.attr.selectableItemBackgroundBorderless)
+            val outValue = TypedValue()
+            ctx.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+            setBackgroundResource(outValue.resourceId)
             setOnClickListener {
                 (binding.alarmsList.adapter as? AlarmsAdapter)?.executeAction(action)
             }

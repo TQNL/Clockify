@@ -1,5 +1,6 @@
 package org.fossify.clock.selection
 
+import org.fossify.clock.R
 import org.fossify.clock.models.Alarm
 import org.fossify.clock.models.AlarmFolder
 import org.fossify.clock.models.FolderAlarmCounts
@@ -125,6 +126,20 @@ fun actionLabel(action: SelectionAction, snapshot: SelectionSnapshot): String = 
     SelectionAction.UNGROUP -> "Ungroup"
     SelectionAction.DELETE -> "Delete"
     SelectionAction.DELETE_ALL -> "Delete all"
+}
+
+/**
+ * Drawable resource ID for an action's bottom-bar icon.
+ * Shared between [AlarmFragment] and [MainActivity] so the mapping lives in one place.
+ */
+fun actionDrawableRes(action: SelectionAction): Int = when (action) {
+    SelectionAction.TURN_ON -> org.fossify.clock.R.drawable.ic_power_on_vector
+    SelectionAction.TURN_OFF -> org.fossify.clock.R.drawable.ic_power_off_vector
+    SelectionAction.GROUP -> org.fossify.clock.R.drawable.ic_folder_vector
+    SelectionAction.MOVE -> org.fossify.clock.R.drawable.ic_move_vector
+    SelectionAction.UNGROUP -> org.fossify.clock.R.drawable.ic_ungroup_vector
+    SelectionAction.DELETE -> org.fossify.clock.R.drawable.ic_delete_vector
+    SelectionAction.DELETE_ALL -> org.fossify.clock.R.drawable.ic_delete_vector
 }
 
 /** True if any selected alarm or folder currently has an enabled alarm. */
