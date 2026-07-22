@@ -247,6 +247,20 @@ class AlarmsAdapter(
     @SuppressLint("NotifyDataSetChanged")
     override fun onActionModeCreated() {
         isInActionMode = true
+
+        // The main alarm screen exposes contextual actions through its existing
+        // bottom tab bar and selection state through the hero. Keep Fossify's
+        // ActionMode alive for selection bookkeeping, but hide its duplicate
+        // contextual bar. Folder views have no bottom tab bar and keep the CAB.
+        activity.window.decorView.post {
+            if (!isInActionMode) return@post
+
+            val visibility = if (folderId == null) View.GONE else View.VISIBLE
+            activity.findViewById<View>(androidx.appcompat.R.id.action_mode_bar)?.visibility = visibility
+            activity.findViewById<View>(androidx.appcompat.R.id.action_context_bar)?.visibility = visibility
+            (actMode?.customView?.parent as? View)?.visibility = visibility
+        }
+
         notifyDataSetChanged()
         selectionModeListener?.onSelectionModeStarted()
     }
@@ -336,8 +350,6 @@ class AlarmsAdapter(
     private fun setupFolderView(view: View, folder: AlarmFolder) {
         val isSelected = selectedKeys.contains(folder.id + FOLDER_KEY_OFFSET)
         ItemFolderBinding.bind(view).apply {
-            folderHolder.isSelected = isSelected
-
             // Selection mode: show check indicator, hide icon and chevron
             val showSelectionUI = isInActionMode
             folderCheckIndicator.beVisibleIf(showSelectionUI)
@@ -365,33 +377,24 @@ class AlarmsAdapter(
     private fun setupView(view: View, alarm: Alarm, holder: ViewHolder) {
         val isSelected = selectedKeys.contains(alarm.id)
         ItemAlarmBinding.bind(view).apply {
-            alarmHolder.isSelected = isSelected
-
             if (isInActionMode) {
-                // Selection mode: simplified view — time, date in accent, check indicator only
+                // Selection emerges inside the existing row: replace the
+                // switch with a check indicator without changing the content,
+                // height, colors, or selected-row background.
                 alarmCheckIndicator.beVisibleIf(true)
                 alarmCheckIndicator.isSelected = isSelected
                 alarmSwitch.visibility = View.GONE
-                alarmLabel.visibility = View.GONE
                 alarmDragHandle.visibility = View.GONE
-
-                // Show day/date line in accent color for non-recurring alarms ("Today"/"Tomorrow"),
-                // hide day-of-week chips for recurring alarms.
-                if (alarm.isRecurring()) {
-                    alarmDays.visibility = View.GONE
-                } else {
-                    alarmDays.visibility = View.VISIBLE
-                    alarmDays.setTextColor(properPrimaryColor)
-                }
             } else {
                 // Normal mode
                 alarmCheckIndicator.visibility = View.GONE
                 alarmSwitch.visibility = View.VISIBLE
-                alarmDays.visibility = View.VISIBLE
-                alarmLabel.beVisibleIf(alarm.label.isNotEmpty())
                 alarmDragHandle.beVisibleIf(selectedKeys.isNotEmpty())
-                alarmDays.setTextColor(textColor)
             }
+
+            alarmDays.visibility = View.VISIBLE
+            alarmLabel.beVisibleIf(alarm.label.isNotEmpty())
+            alarmDays.setTextColor(textColor)
 
             alarmDragHandle.applyColorFilter(textColor)
             alarmDragHandle.setOnTouchListener { _, event ->

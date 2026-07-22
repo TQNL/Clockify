@@ -306,16 +306,6 @@ class MainActivity : SimpleActivity() {
 
     private fun refreshMenuItems() {
         binding.mainToolbar.menu.apply {
-            // During selection mode, hide all toolbar menu items
-            if (isSelectionTabMode) {
-                findItem(R.id.sort).isVisible = false
-                findItem(R.id.create_folder).isVisible = false
-                findItem(R.id.add_alarm).isVisible = false
-                findItem(R.id.turn_all_on).isVisible = false
-                findItem(R.id.turn_all_off).isVisible = false
-                findItem(R.id.more_apps_from_us).isVisible = false
-                return
-            }
             val isAlarmTab = binding.viewPager.currentItem == getTabIndex(TAB_ALARM)
             val isFolderView = binding.fragmentContainer.visibility == android.view.View.VISIBLE
             findItem(R.id.sort).isVisible = isAlarmTab || isFolderView
