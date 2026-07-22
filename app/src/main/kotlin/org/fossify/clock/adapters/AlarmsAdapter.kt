@@ -186,6 +186,22 @@ class AlarmsAdapter(
         finishActMode()
     }
 
+    override fun getItemSelectionKey(position: Int): Int? {
+        val item = items.getOrNull(position)
+        val key = when (item) {
+            is Alarm -> item.id
+            is AlarmFolder -> item.id + FOLDER_KEY_OFFSET
+            else -> null
+        }
+        return key
+    }
+
+    override fun getIsItemSelectable(position: Int): Boolean {
+        val item = items.getOrNull(position)
+        val sel = item is Alarm || item is AlarmFolder
+        return sel
+    }
+
     /** Select every selectable item in the adapter. */
     fun selectAllItems() {
         for (i in 0 until itemCount) {
@@ -219,17 +235,6 @@ class AlarmsAdapter(
      */
     override fun getSelectableItemCount() =
         items.count { it is Alarm || it is AlarmFolder }
-
-    override fun getIsItemSelectable(position: Int) =
-        items.getOrNull(position) is Alarm || items.getOrNull(position) is AlarmFolder
-
-    override fun getItemSelectionKey(position: Int): Int? {
-        return when (val item = items.getOrNull(position)) {
-            is Alarm -> item.id
-            is AlarmFolder -> item.id + FOLDER_KEY_OFFSET
-            else -> null
-        }
-    }
 
     override fun getItemKeyPosition(key: Int): Int {
         if (key >= FOLDER_KEY_OFFSET) {

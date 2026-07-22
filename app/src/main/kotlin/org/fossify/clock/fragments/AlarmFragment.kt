@@ -3,13 +3,9 @@ package org.fossify.clock.fragments
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.fragment.app.Fragment
 import org.fossify.clock.activities.MainActivity
 import org.fossify.clock.activities.SimpleActivity
@@ -40,13 +36,9 @@ import org.fossify.clock.models.AlarmFolder
 import org.fossify.clock.models.FolderAlarmCounts
 import org.fossify.clock.dialogs.SelectFolderDialog
 import org.fossify.clock.dialogs.UngroupConfirmDialog
-import org.fossify.clock.selection.SelectionAction
 import org.fossify.clock.selection.SelectionActionHandler
 import org.fossify.clock.selection.SelectionModeListener
 import org.fossify.clock.selection.SelectionSnapshot
-import org.fossify.clock.selection.actionLabel
-import org.fossify.clock.selection.computeActions
-import android.util.TypedValue
 import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.getProperBackgroundColor
 import org.fossify.commons.extensions.getProperTextColor
@@ -79,12 +71,10 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
     protected var items = ArrayList<Any>()
     private var currentEditAlarmDialog: EditAlarmDialog? = null
 
-    private lateinit var binding: FragmentAlarmBinding
+    internal lateinit var binding: FragmentAlarmBinding
     private val heroRefreshHandler = Handler(Looper.getMainLooper())
 
     /** Samsung-style selection mode state. */
-    private var selectionHeader: View? = null
-    private var selectionBottomBar: ViewGroup? = null
     private var isInSelectionMode = false
     private var heroWasVisibleBeforeSelection = false
 
@@ -202,10 +192,6 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
             requireContext().updateTextColors(alarmFragment)
             alarmFab.visibility = View.GONE
         }
-
-        selectionHeader = requireView().findViewById(R.id.selection_header)
-        selectionBottomBar = requireView().findViewById<ViewGroup>(R.id.selection_bottom_bar)
-
         setupAlarms()
         updateAlarmHero()
     }
@@ -394,7 +380,6 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
     // Samsung-style selection mode — screen transformation
     // ---------------------------------------------------------------
 
-    /** Adapter-to-fragment bridge for selection-mode lifecycle. */
     private val selectionModeListener = object : SelectionModeListener {
         override fun onSelectionModeStarted() = enterSelectionMode()
         override fun onSelectionModeChanged(snapshot: SelectionSnapshot) = updateSelectionUI(snapshot)
@@ -404,117 +389,80 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
     private fun enterSelectionMode() {
         isInSelectionMode = true
         heroWasVisibleBeforeSelection = binding.alarmHero.visibility == View.VISIBLE
-        binding.alarmHero.visibility = View.GONE
+
+        // Transform hero: show selection bar, hide countdown content
+        binding.alarmHero.visibility = if (heroWasVisibleBeforeSelection || !isFolderView()) View.VISIBLE else View.GONE
+        binding.heroSelectionBar.visibility = View.VISIBLE
+        binding.alarmHeroCountdown.visibility = View.GONE
+        binding.alarmHeroDatetime.visibility = View.GONE
+        binding.alarmHeroDivider.visibility = View.GONE
         binding.alarmFab.visibility = View.GONE
-        selectionHeader?.visibility = View.VISIBLE
-        selectionBottomBar?.visibility = View.VISIBLE
-        (activity as? MainActivity)?.setTabBarVisible(false)
-        (activity as? MainActivity)?.setToolbarVisible(false)
-        wireSelectionHeader()
+
+        // Main tab: replace bottom tabs with action buttons; folder view: toolbar-based
+        if (!isFolderView()) {
+            (activity as? MainActivity)?.enterSelectionTabMode(this)
+        }
+
+        wireHeroSelection()
     }
 
     private fun exitSelectionMode() {
         isInSelectionMode = false
-        binding.alarmHero.visibility = if (heroWasVisibleBeforeSelection) View.VISIBLE else View.GONE
+
+        // Restore hero to normal mode
+        binding.heroSelectionBar.visibility = View.GONE
+        if (heroWasVisibleBeforeSelection) {
+            binding.alarmHeroCountdown.visibility = View.VISIBLE
+            binding.alarmHeroDatetime.visibility = View.VISIBLE
+            binding.alarmHeroDivider.visibility = View.VISIBLE
+        } else {
+            binding.alarmHero.visibility = View.GONE
+        }
         binding.alarmFab.visibility = View.GONE
-        selectionHeader?.visibility = View.GONE
-        selectionBottomBar?.visibility = View.GONE
-        (activity as? MainActivity)?.setTabBarVisible(true)
-        (activity as? MainActivity)?.setToolbarVisible(true)
+
+        // Restore navigation tabs
+        if (!isFolderView()) {
+            (activity as? MainActivity)?.exitSelectionTabMode()
+        }
     }
 
-    private fun wireSelectionHeader() {
-        val headerView = selectionHeader ?: return
-        headerView.findViewById<View>(R.id.selection_header_all)?.setOnClickListener {
+    private fun wireHeroSelection() {
+        binding.heroSelectAll.setOnClickListener {
             val adapter = binding.alarmsList.adapter as? AlarmsAdapter ?: return@setOnClickListener
-            // Toggle between select-all and deselect-all
             if (adapter.getSelectedKeysSet().size == adapter.getSelectableItemCount()) {
                 adapter.deselectAll()
             } else {
                 adapter.selectAllItems()
             }
         }
-        headerView.findViewById<View>(R.id.selection_header_cancel)?.setOnClickListener {
+        binding.heroCancel.setOnClickListener {
             (binding.alarmsList.adapter as? AlarmsAdapter)?.exitSelectionMode()
         }
     }
 
     private fun updateSelectionUI(snapshot: SelectionSnapshot) {
-        val actions = computeActions(snapshot)
         val count = snapshot.alarms.size + snapshot.folders.size
 
-        // Header title
-        val titleView = selectionHeader?.findViewById<TextView>(R.id.selection_header_title)
-        titleView?.text = if (count == 0) {
+        // Update hero selection bar title
+        binding.heroSelectionTitle.text = if (count == 0) {
             requireContext().getString(R.string.select_alarms)
         } else {
             requireContext().getString(R.string.n_selected, count)
         }
 
-        // Bottom bar buttons
-        val container = selectionBottomBar?.findViewById<ViewGroup>(R.id.selection_actions_container)
-        container?.removeAllViews()
-        if (actions.isNotEmpty()) {
-            for (action in actions) {
-                val button = createActionButton(action, snapshot)
-                container?.addView(button)
-            }
-        }
-        container?.visibility = if (actions.isEmpty()) View.GONE else View.VISIBLE
+        // Update select-all visual state
+        val adapter = binding.alarmsList.adapter as? AlarmsAdapter
+        val totalSelectable = adapter?.getSelectableItemCount() ?: 0
+        val allSelected = count == totalSelectable && count > 0
+        binding.heroSelectAll.isSelected = allSelected
+        binding.heroSelectAll.setImageResource(
+            if (allSelected) R.drawable.ic_selection_check_circle_filled
+            else R.drawable.ic_selection_check_circle_outline
+        )
+
+        // Tell MainActivity to rebuild action tabs
+        (activity as? MainActivity)?.updateSelectionTabs(snapshot)
     }
-
-    private fun createActionButton(action: SelectionAction, snapshot: SelectionSnapshot): View {
-        val ctx = requireContext()
-        val outer = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            minimumWidth = 80.dpPx()
-            setPadding(4, 8, 4, 8)
-            isClickable = true
-            isFocusable = true
-            val outValue = TypedValue()
-            ctx.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
-            setBackgroundResource(outValue.resourceId)
-            setOnClickListener {
-                (binding.alarmsList.adapter as? AlarmsAdapter)?.executeAction(action)
-            }
-        }
-
-        val icon = ImageView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(24.dpPx(), 24.dpPx()).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-            setImageResource(actionIconRes(action))
-            alpha = 0.9f
-        }
-        outer.addView(icon)
-
-        val label = TextView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 8.dpPx() }
-            text = actionLabel(action, snapshot)
-            textSize = 11f
-            setTextColor(ctx.getProperTextColor())
-            gravity = Gravity.CENTER
-        }
-        outer.addView(label)
-
-        return outer
-    }
-
-    private fun actionIconRes(action: SelectionAction): Int = when (action) {
-        SelectionAction.TURN_ON -> R.drawable.ic_power_on_vector
-        SelectionAction.TURN_OFF -> R.drawable.ic_power_off_vector
-        SelectionAction.GROUP -> R.drawable.ic_folder_vector
-        SelectionAction.MOVE -> R.drawable.ic_move_vector
-        SelectionAction.UNGROUP -> R.drawable.ic_ungroup_vector
-        SelectionAction.DELETE -> R.drawable.ic_delete_vector
-        SelectionAction.DELETE_ALL -> R.drawable.ic_delete_vector
-    }
-
-    private fun Int.dpPx(): Int = (this * requireContext().resources.displayMetrics.density).toInt()
 
     // -----------------------------------------------------------------
     // SelectionActionHandler — Samsung-style contextual actions

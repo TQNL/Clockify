@@ -1,115 +1,149 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/alarm_fragment"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <RelativeLayout
-        android:id="@+id/alarm_holder"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent">
+    <!-- Samsung-style next-alarm hero -->
+    <LinearLayout
+        android:id="@+id/alarm_hero"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingTop="@dimen/activity_margin"
+        android:paddingBottom="@dimen/normal_margin"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:visibility="visible">
 
-        <!-- Samsung-style next-alarm hero -->
+        <!-- === SELECTION MODE BAR (replaces hero content during selection) === -->
         <LinearLayout
-            android:id="@+id/alarm_hero"
+            android:id="@+id/hero_selection_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_alignParentTop="true"
-            android:gravity="center_horizontal"
-            android:orientation="vertical"
-            android:paddingTop="@dimen/activity_margin"
-            android:paddingBottom="@dimen/normal_margin"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="12dp"
             android:visibility="gone"
             tools:visibility="visible">
 
+            <!-- Select All check icon -->
+            <ImageView
+                android:id="@+id/hero_select_all"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_selection_check_circle_outline"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="4dp"
+                android:contentDescription="@null" />
+
+            <!-- Title: "N selected" / "Select alarms" -->
             <org.fossify.commons.views.MyTextView
-                android:id="@+id/alarm_hero_countdown"
+                android:id="@+id/hero_selection_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="@string/select_alarms"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <!-- Cancel button -->
+            <org.fossify.commons.views.MyTextView
+                android:id="@+id/hero_cancel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:textSize="28sp"
-                android:fontFamily="sans-serif-light"
-                android:alpha="0.9"
-                tools:text="Alarm in 12 hours 33 minutes" />
-
-            <org.fossify.commons.views.MyTextView
-                android:id="@+id/alarm_hero_datetime"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:gravity="center"
-                android:textSize="@dimen/big_text_size"
-                android:alpha="0.7"
-                tools:text="Thu, 24 Jul, 8:00 AM" />
-
-            <View
-                android:id="@+id/alarm_hero_divider"
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="@dimen/normal_margin"
-                android:layout_marginHorizontal="@dimen/activity_margin"
-                android:alpha="0.15"
-                android:background="?android:textColorPrimary" />
+                android:text="@string/cancel"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp" />
 
         </LinearLayout>
 
-        <org.fossify.commons.views.MyRecyclerView
-            android:id="@+id/alarms_list"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_below="@id/alarm_hero"
-            android:layout_above="@+id/selection_bottom_bar"
-            android:clipToPadding="false"
-            android:overScrollMode="ifContentScrolls"
-            android:paddingBottom="@dimen/fab_list_bottom_padding"
-            android:scrollbars="none"
-            app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager"
-            tools:listitem="@layout/item_alarm" />
+        <!-- === NORMAL HERO CONTENT === -->
+        <org.fossify.commons.views.MyTextView
+            android:id="@+id/alarm_hero_countdown"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textSize="28sp"
+            android:fontFamily="sans-serif-light"
+            android:alpha="0.9"
+            tools:text="Alarm in 12 hours 33 minutes" />
 
         <org.fossify.commons.views.MyTextView
-            android:id="@+id/alarms_placeholder"
-            android:layout_width="match_parent"
+            android:id="@+id/alarm_hero_datetime"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_below="@id/alarm_hero"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="@dimen/small_margin"
-            android:alpha="0.8"
+            android:layout_marginTop="4dp"
             android:gravity="center"
-            android:paddingStart="@dimen/activity_margin"
-            android:paddingTop="@dimen/activity_margin"
-            android:paddingEnd="@dimen/activity_margin"
-            android:text="@string/no_alarms_found"
-            android:textSize="@dimen/bigger_text_size"
-            android:textStyle="italic"
-            android:visibility="gone" />
+            android:textSize="@dimen/big_text_size"
+            android:alpha="0.7"
+            tools:text="Thu, 24 Jul, 8:00 AM" />
 
-        <!-- Selection bottom action bar -->
-        <include
-            android:id="@+id/selection_bottom_bar"
-            layout="@layout/view_selection_bottom_bar"
+        <View
+            android:id="@+id/alarm_hero_divider"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_alignParentBottom="true"
-            android:visibility="gone" />
+            android:layout_height="1dp"
+            android:layout_marginTop="@dimen/normal_margin"
+            android:layout_marginHorizontal="@dimen/activity_margin"
+            android:alpha="0.15"
+            android:background="?android:textColorPrimary" />
 
-    </RelativeLayout>
+    </LinearLayout>
 
-    <!-- Selection header overlay -->
-    <include
-        android:id="@+id/selection_header"
-        layout="@layout/view_selection_header"
-        android:layout_width="match_parent"
+    <org.fossify.commons.views.MyRecyclerView
+        android:id="@+id/alarms_list"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:overScrollMode="ifContentScrolls"
+        android:paddingBottom="@dimen/fab_list_bottom_padding"
+        android:scrollbars="none"
+        app:layoutManager="org.fossify.commons.views.MyLinearLayoutManager"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/alarm_hero"
+        tools:listitem="@layout/item_alarm" />
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/alarms_placeholder"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:visibility="gone" />
+        android:layout_marginTop="@dimen/small_margin"
+        android:alpha="0.8"
+        android:gravity="center"
+        android:paddingStart="@dimen/activity_margin"
+        android:paddingTop="@dimen/activity_margin"
+        android:paddingEnd="@dimen/activity_margin"
+        android:text="@string/no_alarms_found"
+        android:textSize="@dimen/bigger_text_size"
+        android:textStyle="italic"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/alarm_hero" />
 
     <org.fossify.commons.views.MyFloatingActionButton
         android:id="@+id/alarm_fab"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
         android:layout_margin="@dimen/activity_margin"
-        android:src="@drawable/ic_plus_vector" />
+        android:src="@drawable/ic_plus_vector"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
