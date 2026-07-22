@@ -36,6 +36,7 @@ import org.fossify.clock.models.AlarmFolder
 import org.fossify.clock.models.FolderAlarmCounts
 import org.fossify.clock.dialogs.SelectFolderDialog
 import org.fossify.clock.dialogs.UngroupConfirmDialog
+import org.fossify.clock.selection.SelectionAction
 import org.fossify.clock.selection.SelectionActionHandler
 import org.fossify.clock.selection.SelectionModeListener
 import org.fossify.clock.selection.SelectionSnapshot
@@ -71,7 +72,7 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
     protected var items = ArrayList<Any>()
     private var currentEditAlarmDialog: EditAlarmDialog? = null
 
-    internal lateinit var binding: FragmentAlarmBinding
+    private lateinit var binding: FragmentAlarmBinding
     private val heroRefreshHandler = Handler(Looper.getMainLooper())
 
     /** Samsung-style selection mode state. */
@@ -391,7 +392,7 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
         heroWasVisibleBeforeSelection = binding.alarmHero.visibility == View.VISIBLE
 
         // Transform hero: show selection bar, hide countdown content
-        binding.alarmHero.visibility = if (heroWasVisibleBeforeSelection || !isFolderView()) View.VISIBLE else View.GONE
+        binding.alarmHero.visibility = View.VISIBLE
         binding.heroSelectionBar.visibility = View.VISIBLE
         binding.alarmHeroCountdown.visibility = View.GONE
         binding.alarmHeroDatetime.visibility = View.GONE
@@ -462,6 +463,11 @@ open class AlarmFragment : Fragment(), ToggleAlarmInterface, SelectionActionHand
 
         // Tell MainActivity to rebuild action tabs
         (activity as? MainActivity)?.updateSelectionTabs(snapshot)
+    }
+
+    /** Execute a contextual action without exposing this fragment's view binding. */
+    fun executeSelectionAction(action: SelectionAction) {
+        (binding.alarmsList.adapter as? AlarmsAdapter)?.executeAction(action)
     }
 
     // -----------------------------------------------------------------

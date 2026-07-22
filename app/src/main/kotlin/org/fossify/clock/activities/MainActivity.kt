@@ -10,6 +10,7 @@ import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.addCallback
 import androidx.core.graphics.drawable.toDrawable
+import com.google.android.material.tabs.TabLayout
 import me.grantland.widget.AutofitHelper
 import org.fossify.clock.BuildConfig
 import org.fossify.clock.R
@@ -20,7 +21,6 @@ import org.fossify.clock.extensions.config
 import org.fossify.clock.extensions.getEnabledAlarms
 import org.fossify.clock.extensions.handleFullScreenNotificationsPermission
 import org.fossify.clock.extensions.updateWidgets
-import org.fossify.clock.adapters.AlarmsAdapter
 import org.fossify.clock.fragments.AlarmFragment
 import org.fossify.clock.fragments.FolderFragment
 import org.fossify.clock.selection.SelectionAction
@@ -77,50 +77,55 @@ class MainActivity : SimpleActivity() {
 
     // Samsung-style selection tab mode
     private var isSelectionTabMode = false
+    private var isRebuildingTabs = false
     private var selectionAlarmFragment: WeakReference<AlarmFragment>? = null
     private var lastSelectionSnapshot: SelectionSnapshot? = null
+    private var selectionActions: List<SelectionAction> = emptyList()
 
-    /** Shared tab selection listener — swaps between nav and action dispatch. */
-    private val mainTabListener = object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
-        override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
+    /** Shared listener for navigation tabs and user-triggered selection actions. */
+    private val mainTabListener = object : TabLayout.OnTabSelectedListener {
+        override fun onTabSelected(tab: TabLayout.Tab) {
+            if (isRebuildingTabs) return
+
             if (isSelectionTabMode) {
-                // Execute action
-                val snapshot = lastSelectionSnapshot ?: return
-                val actions = computeActions(snapshot)
-                val idx = tab.position
-                if (idx < 0 || idx >= actions.size) return
-                val selectedAction = actions.elementAt(idx)
-                val fragment = selectionAlarmFragment?.get() ?: return
-                val adapter = fragment.binding.alarmsList.adapter as? AlarmsAdapter ?: return
-                adapter.executeAction(selectedAction)
-            } else {
-                binding.viewPager.currentItem = tab.position
-                updateBottomTabItemColors(
-                    view = tab.customView,
-                    isActive = true,
-                    drawableId = getSelectedTabDrawableIds()[tab.position]
-                )
-                // B4/B5: Apply brand primary color to newly selected tab
-                tab.customView?.let {
-                    val b = BottomTablayoutItemBinding.bind(it)
-                    b.tabItemIcon.applyColorFilter(getProperPrimaryColor())
-                    b.tabItemLabel.setTextColor(getProperPrimaryColor())
-                }
+                executeSelectionAction(tab)
+                return
+            }
+
+            val drawableId = getSelectedTabDrawableIds().getOrNull(tab.position) ?: return
+            binding.viewPager.currentItem = tab.position
+            updateBottomTabItemColors(tab.customView, true, drawableId)
+            tab.customView?.let {
+                val itemBinding = BottomTablayoutItemBinding.bind(it)
+                itemBinding.tabItemIcon.applyColorFilter(getProperPrimaryColor())
+                itemBinding.tabItemLabel.setTextColor(getProperPrimaryColor())
             }
         }
 
-        override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) {
-            if (!isSelectionTabMode) {
-                updateBottomTabItemColors(
-                    view = tab.customView,
-                    isActive = false,
-                    drawableId = getDeselectedTabDrawableIds()[tab.position]
-                )
-            }
+        override fun onTabUnselected(tab: TabLayout.Tab) {
+            if (isRebuildingTabs || isSelectionTabMode) return
+            val drawableId = getDeselectedTabDrawableIds().getOrNull(tab.position) ?: return
+            updateBottomTabItemColors(tab.customView, false, drawableId)
         }
 
-        override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) {
-            // no-op
+        override fun onTabReselected(tab: TabLayout.Tab) {
+            if (!isRebuildingTabs && isSelectionTabMode) {
+                executeSelectionAction(tab)
+            }
+        }
+    }
+
+    private fun executeSelectionAction(tab: TabLayout.Tab) {
+        val action = selectionActions.getOrNull(tab.position) ?: return
+        selectionAlarmFragment?.get()?.executeSelectionAction(action)
+    }
+
+    private inline fun rebuildTabsWithoutCallbacks(block: () -> Unit) {
+        isRebuildingTabs = true
+        try {
+            block()
+        } finally {
+            isRebuildingTabs = false
         }
     }
 
@@ -423,45 +428,39 @@ class MainActivity : SimpleActivity() {
 
     /** Build the standard 4-tab navigation layout. */
     private fun rebuildNavigationTabs() {
-        binding.mainTabsHolder.apply {
-            tabMode = com.google.android.material.tabs.TabLayout.MODE_FIXED
-        }
-        binding.mainTabsHolder.removeAllTabs()
+        rebuildTabsWithoutCallbacks {
+            binding.mainTabsHolder.apply {
+                tabMode = TabLayout.MODE_FIXED
+                removeAllTabs()
+            }
 
-        val tabDrawables = arrayOf(
-            R.drawable.ic_clock_vector,
-            R.drawable.ic_alarm_vector,
-            R.drawable.ic_stopwatch_vector,
-            R.drawable.ic_hourglass_vector
-        )
-        val tabLabels = arrayOf(
-            R.string.clock,
-            org.fossify.commons.R.string.alarm,
-            R.string.stopwatch,
-            R.string.timer
-        )
+            val tabDrawables = arrayOf(
+                R.drawable.ic_clock_vector,
+                R.drawable.ic_alarm_vector,
+                R.drawable.ic_stopwatch_vector,
+                R.drawable.ic_hourglass_vector
+            )
+            val tabLabels = arrayOf(
+                R.string.clock,
+                org.fossify.commons.R.string.alarm,
+                R.string.stopwatch,
+                R.string.timer
+            )
 
-        tabDrawables.forEachIndexed { i, drawableId ->
-            binding.mainTabsHolder.newTab()
-                .setCustomView(org.fossify.commons.R.layout.bottom_tablayout_item)
-                .apply tab@{
-                    customView?.let { BottomTablayoutItemBinding.bind(it) }?.apply {
-                        tabItemIcon.setImageDrawable(getDrawable(drawableId))
-                        tabItemLabel.setText(tabLabels[i])
-                        AutofitHelper.create(tabItemLabel)
-                        binding.mainTabsHolder.addTab(this@tab)
+            tabDrawables.forEachIndexed { i, drawableId ->
+                binding.mainTabsHolder.newTab()
+                    .setCustomView(org.fossify.commons.R.layout.bottom_tablayout_item)
+                    .apply tab@{
+                        customView?.let { BottomTablayoutItemBinding.bind(it) }?.apply {
+                            tabItemIcon.setImageDrawable(getDrawable(drawableId))
+                            tabItemLabel.setText(tabLabels[i])
+                            AutofitHelper.create(tabItemLabel)
+                            binding.mainTabsHolder.addTab(this@tab, false)
+                        }
                     }
-                }
-        }
+            }
 
-        // No separate onTabSelectionChanged — handled by mainTabListener
-        // Restore the active-tab visual after rebuild
-        val activePos = binding.viewPager.currentItem
-        binding.mainTabsHolder.getTabAt(activePos)?.let { activeTab ->
-            // Temporarily remove listener to prevent selection from changing viewPager
-            binding.mainTabsHolder.removeOnTabSelectedListener(mainTabListener)
-            activeTab.select()
-            binding.mainTabsHolder.addOnTabSelectedListener(mainTabListener)
+            binding.mainTabsHolder.getTabAt(binding.viewPager.currentItem)?.select()
         }
         setupTabColors()
     }
@@ -469,34 +468,31 @@ class MainActivity : SimpleActivity() {
     /** Build selection-mode action tabs from [lastSelectionSnapshot]. */
     private fun rebuildSelectionTabs() {
         val snapshot = lastSelectionSnapshot ?: return
-        val actions = computeActions(snapshot)
+        selectionActions = computeActions(snapshot).toList()
 
-        binding.mainTabsHolder.apply {
-            // Switch to scrollable mode so action tabs don't squeeze
-            tabMode = com.google.android.material.tabs.TabLayout.MODE_SCROLLABLE
-            removeAllTabs()
-        }
+        rebuildTabsWithoutCallbacks {
+            binding.mainTabsHolder.apply {
+                tabMode = TabLayout.MODE_SCROLLABLE
+                removeAllTabs()
+            }
 
-        if (actions.isEmpty()) return
+            for (action in selectionActions) {
+                val drawableId = actionDrawableRes(action)
+                val label = actionLabel(action, snapshot)
 
-        for (action in actions) {
-            val drawableId = actionDrawableRes(action)
-            val label = actionLabel(action, snapshot)
-
-            binding.mainTabsHolder.newTab()
-                .setCustomView(org.fossify.commons.R.layout.bottom_tablayout_item)
-                .apply tab@{
-                    customView?.let { BottomTablayoutItemBinding.bind(it) }?.apply {
-                        tabItemIcon.setImageDrawable(getDrawable(drawableId))
-                        tabItemLabel.text = label
-                        AutofitHelper.create(tabItemLabel)
-                        binding.mainTabsHolder.addTab(this@tab)
+                binding.mainTabsHolder.newTab()
+                    .setCustomView(org.fossify.commons.R.layout.bottom_tablayout_item)
+                    .apply tab@{
+                        customView?.let { BottomTablayoutItemBinding.bind(it) }?.apply {
+                            tabItemIcon.setImageDrawable(getDrawable(drawableId))
+                            tabItemLabel.text = label
+                            AutofitHelper.create(tabItemLabel)
+                            // Action tabs are buttons, not persistent navigation state.
+                            binding.mainTabsHolder.addTab(this@tab, false)
+                        }
                     }
-                }
+            }
         }
-
-        // No separate onTabSelectionChanged — handled by mainTabListener
-        // Restore listener knows to dispatch action when isSelectionTabMode=true
         setupSelectionTabColors()
     }
 
@@ -516,7 +512,14 @@ class MainActivity : SimpleActivity() {
         if (isSelectionTabMode) return
         isSelectionTabMode = true
         selectionAlarmFragment = WeakReference(fragment)
-        rebuildTabs()
+        lastSelectionSnapshot = null
+        selectionActions = emptyList()
+        rebuildTabsWithoutCallbacks {
+            binding.mainTabsHolder.apply {
+                tabMode = TabLayout.MODE_SCROLLABLE
+                removeAllTabs()
+            }
+        }
         binding.mainTabsHolder.visibility = android.view.View.VISIBLE
         refreshMenuItems()
     }
@@ -526,9 +529,9 @@ class MainActivity : SimpleActivity() {
         if (!isSelectionTabMode) return
         isSelectionTabMode = false
         lastSelectionSnapshot = null
+        selectionActions = emptyList()
         selectionAlarmFragment = null
-        rebuildTabs()
-        setupTabColors()
+        rebuildNavigationTabs()
         refreshMenuItems()
     }
 
@@ -540,6 +543,11 @@ class MainActivity : SimpleActivity() {
     }
 
     private fun setupTabColors() {
+        if (isSelectionTabMode) {
+            setupSelectionTabColors()
+            return
+        }
+
         val primaryColor = getProperPrimaryColor()
         val textColor = getProperTextColor()
 
